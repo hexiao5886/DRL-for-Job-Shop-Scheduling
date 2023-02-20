@@ -1,0 +1,9 @@
+For windows:
+git add .
+git commit -m "xxx"
+git push -u origin_windows master
+
+For remote server:
+git add .
+git commit -m "xxx"
+git push -u origin master
