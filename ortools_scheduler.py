@@ -291,7 +291,15 @@ class ORtools_scheduler:
         self.assigned_jobs = assigned_jobs
 
 
-    def store_solution(self):
+    def store_time_mat(self, filename):
+        times = np.array(self.times)
+        np.save(filename, times)
+
+    def load_time_mat(self, filename):
+        self.times = np.load(filename)
+
+
+    def store_solution(self, filename=None):
         assigned_jobs = self.assigned_jobs
         data = {"machine_id":[], "start":[], "job":[], "index":[], "duration":[]}
         df = pd.DataFrame(data)
@@ -304,11 +312,17 @@ class ORtools_scheduler:
                 duration = task.duration
                 df = df.append({"machine_id":machine_id, "start":start, "job":job, "index":index, "duration":duration}, ignore_index=True)
         df = df.astype(int)
-        df.to_csv(f"sols/{self.instance_name}.csv")
+        if not filename:
+            df.to_csv(f"sols/{self.instance_name}.csv")
+        else:
+            df.to_csv(filename)
 
 
-    def read_solution(self):
-        df = pd.read_csv(f"sols/{self.instance_name}.csv", index_col=0)
+    def read_solution(self, filename=None):
+        if filename:
+            df = pd.read_csv(filename, index_col=0)
+        else:
+            df = pd.read_csv(f"sols/{self.instance_name}.csv", index_col=0)
         assigned_jobs = collections.defaultdict(list)
         assigned_task_type = collections.namedtuple('assigned_task_type',
                                                             'start job index duration')

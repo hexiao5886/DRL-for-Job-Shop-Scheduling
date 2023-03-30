@@ -226,8 +226,7 @@ class DQNAgent:
                 makespans.append(self.test())
                 self.is_test = False
 
-            # reset with random rate
-            state = self.env.reset(random_rate=fraction*0.1, shuffle=True)
+            state = self.env.reset()
             scores.append(score)
             score = 0
 

@@ -171,7 +171,7 @@ class BasicJsspEnv(gym.Env):
         }
         return observation, reward, done, info
 
-    def reset(self, random=True, shuffle: bool = False, ret: bool = True):
+    def reset(self, random=False, shuffle: bool = False, ret: bool = True):
         """
         Reset the environment.
 
