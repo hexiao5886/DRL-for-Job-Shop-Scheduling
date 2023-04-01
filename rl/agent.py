@@ -176,7 +176,7 @@ class DQNAgent:
 
         return loss.item()
         
-    def train(self, num_episodes: int, plot=True, plotting_interval: int = 200):
+    def train(self, num_episodes: int, plot=True, plotting_interval: int = 200, save_plot=None):
         """Train the agent."""
         self.is_test = False
         
@@ -235,9 +235,9 @@ class DQNAgent:
             # plotting
             if plot:
                 if episode_idx % plotting_interval == 0:
-                    self._plot(episode_idx, scores, losses, makespans)
+                    self._plot(episode_idx, scores, losses, makespans, save_plot=save_plot)
+
         
-                
         self.env.close()
                 
     def test(self) -> None:
@@ -295,6 +295,7 @@ class DQNAgent:
         scores: List[float], 
         losses: List[float], 
         makespans: List[float],
+        save_plot=None
     ):
         """Plot the training progresses."""
         clear_output(True)
@@ -308,4 +309,6 @@ class DQNAgent:
         plt.subplot(133)
         plt.title('makespan')
         plt.plot(makespans)
+        if save_plot:
+            plt.savefig(save_plot)
         plt.show()
