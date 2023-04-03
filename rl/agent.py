@@ -81,7 +81,7 @@ class DQNAgent:
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
-        print(self.device)
+        #print(self.device)
         
         # PER
         # In DQN, We used "ReplayBuffer(obs_dim, memory_size, batch_size)"
@@ -262,6 +262,8 @@ class DQNAgent:
     def _get_dqn(self):
         return self.dqn
 
+    def load_dqn(self, file):
+        self.dqn.load_state_dict(torch.load(file))
 
     def _compute_dqn_loss(self, samples: Dict[str, np.ndarray]) -> torch.Tensor:
         """Return dqn loss."""
