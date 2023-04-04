@@ -584,7 +584,7 @@ class DQNAgent_GCN:
         # G_t   = r + gamma * v(s_{t+1})  if state != Terminal
         #       = r                       otherwise
         # print(state.shape)          # [64, 360]
-        curr_q_value = self.dqn(state,self.env_edge_index, batch_size=self.batch_size).gather(1, action)
+        curr_q_value = self.dqn(state, self.env_edge_index, batch_size=self.batch_size).gather(1, action)
         next_q_value = self.dqn_target(
             next_state, self.env_edge_index, batch_size=self.batch_size
         ).max(dim=1, keepdim=True)[0].detach()
