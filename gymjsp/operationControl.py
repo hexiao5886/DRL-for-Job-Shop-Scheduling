@@ -162,16 +162,18 @@ class JobSet:
                                        type=CONJUNCTIVE_TYPE,
                                        direction=FORWARD)
 
+                            
                             for disj_op in op.disjunctive_ops:
                                 if disj_op.x['type'] != DONE_NODE:
-                                    g.add_edge(op.id, disj_op.id, type=DISJUNCTIVE_TYPE)
-
+                                    g.add_edge(op.id, disj_op.id, type=DISJUNCTIVE_TYPE)        # 所有同一机台的operation之间都有边，表达“等价”关系
+                        """
                         if not_start_cond:
                             if op.prev_op.x['type'] != DONE_NODE:
                                 g.add_edge(op.id, op.prev_op.id,
                                            processing_time=-1 * op.prev_op.processing_time,
                                            type=CONJUNCTIVE_TYPE,
-                                           direction=BACKWARD)
+                                           direction=BACKWARD)"""
+                                
                 else:
                     g.add_node(op.id, **op.x)
                     if not_end_cond:  # Construct forward flow conjunctive edges only

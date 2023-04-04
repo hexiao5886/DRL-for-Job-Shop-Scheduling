@@ -41,7 +41,7 @@ observation = {
 """
 
 
-def get_nodelist(g: nx.OrderedDiGraph):
+def get_nodelist(g):
     """Get all node in the graph in list."""
     return [i for i in range(nx.number_of_nodes(g))]
 
@@ -550,7 +550,7 @@ class BasicJsspEnv(gym.Env):
         # Draw a gantt chart
         self.job_manager.draw_gantt_chart(path, benchmark_name, max_x)
 
-    def g2s(self, g: nx.OrderedDiGraph):
+    def g2s(self, g, state_len=None):
         """
         Get the state from one disjunctive graph.
 
@@ -560,7 +560,11 @@ class BasicJsspEnv(gym.Env):
         Returns:
             The state that consists of vector.
         """
-        state = np.empty(self.observation_space.shape, dtype=np.float32)
+        
+        if state_len:
+            state = np.empty(state_len, dtype=np.float32)       # for GraphHeuristicEnv
+        else:
+            state = np.empty(self.observation_space.shape, dtype=np.float32)
         nodelist = get_nodelist(g)
         for n in nodelist:
             job_id, step_id = g.nodes[n]['id'][0], g.nodes[n]['id'][1]
@@ -637,7 +641,7 @@ class GraphJsspEnv(BasicJsspEnv):
         )
         self.observation_space = GraphState(self.num_jobs, self.num_machines, self.num_machines)
 
-    def get_adjacent_matrix(self, g: nx.OrderedDiGraph) -> csr_matrix:
+    def get_adjacent_matrix(self, g) -> csr_matrix:
         """
         Get the compressed adjacency matrix from the graph.
         You can use 'todense()' or 'toarray()' then get the complete matrix.
@@ -661,7 +665,7 @@ class GraphJsspEnv(BasicJsspEnv):
             self.A = A
         return self.A
 
-    def get_disjunctive_matrix(self, g: nx.OrderedDiGraph) -> csr_matrix:
+    def get_disjunctive_matrix(self, g) -> csr_matrix:
         """
         Get the compressed disjunctive edge matrix from the graph.
         You can use 'todense()' or 'toarray()' then get the complete matrix.
@@ -700,6 +704,23 @@ class GraphJsspEnv(BasicJsspEnv):
 
         return self.D
 
+    def get_edge_index(self, g):
+        if not hasattr(self, 'edge_index'):
+            num_nodes = nx.number_of_nodes(g)
+
+            nodelist = [i for i in range(num_nodes)]
+
+            for n in nodelist:
+                neighbors = g.neighbors(n)
+                for m in neighbors:
+                    if g.edges[n, m]['type'] == DISJUNCTIVE_TYPE:
+                        pass
+
+            n, m = self.num_jobs, self.num_machines
+            self.edge_index = []
+
+        return self.edge_index
+
     def step(self, action):
         """
         Process a action contained in action space.
@@ -723,13 +744,20 @@ class GraphJsspEnv(BasicJsspEnv):
         g, done = self.observe()
         reward = self.cal_reward(action, doable_ops=doable_ops)
 
+        """
         feature = self.__get_feature_from_g(g)
         observation = {
             'feature': feature,
             'A': self.get_adjacent_matrix(g),
             'D': self.get_disjunctive_matrix(g)
-        }
+        }"""
+        x = self.g2s(g)
+        x = np.reshape(x, (-1,10))
 
+        observation = {
+            'x': x,
+            'edge_index': 0
+        }
         info = {
             'cost': self.num_unsafety,
             'wait': self.num_wait,
@@ -769,7 +797,7 @@ class GraphJsspEnv(BasicJsspEnv):
         if ret:
             return observation
 
-    def __get_feature_from_g(self, g: nx.OrderedDiGraph) -> np.ndarray:
+    def __get_feature_from_g(self, g) -> np.ndarray:
         """
         Get the feature from one disjunctive graph.
 
@@ -1005,7 +1033,7 @@ class HeuristicGraphJsspEnv(HeuristicJsspEnv):
 
             >>> env = HeuristicGraphJsspEnv(num_jobs=6, num_machines=6)
         """
-        self.feature_dim = 10
+        
         super(HeuristicGraphJsspEnv, self).__init__(
             num_machines=num_machines,
             num_jobs=num_jobs,
@@ -1016,9 +1044,11 @@ class HeuristicGraphJsspEnv(HeuristicJsspEnv):
             reward_type=reward_type,
             schedule_cycle=schedule_cycle,
         )
-        self.observation_space = GraphState(self.num_jobs, self.num_machines, self.num_machines)
+        #self.observation_space = GraphState(self.num_jobs, self.num_machines, self.num_machines)
+        self.feature_dim = 10
+        self.num_nodes = self.num_jobs * self.num_machines
 
-    def reset(self, random_rate: float = 0., shuffle: bool = True, ret: bool = True):
+    def reset(self, shuffle: bool = True, ret: bool = True):
         """
         Reset the environment.
 
@@ -1031,25 +1061,19 @@ class HeuristicGraphJsspEnv(HeuristicJsspEnv):
         Returns:
             The initial observation or None.
         """
-        super(HeuristicGraphJsspEnv, self).reset(ret=False, random_rate=random_rate, shuffle=shuffle)
+        super(HeuristicGraphJsspEnv, self).reset(ret=False, shuffle=shuffle)
 
         g, _ = self.observe()
-        feature = self.__get_feature_from_g(g)
-        if hasattr(self, 'A'):
-            delattr(self, 'A')
-            delattr(self, 'D')
-        A = self.get_adjacent_matrix(g)
-        D = self.get_disjunctive_matrix(g)
+        x = self.g2s(g, len(g.nodes)*10)
+        #x = np.reshape(x, (-1,10))
 
-        observation = {
-            'feature': feature,
-            'A': A,
-            'D': D
-        }
+        self.edge_index = np.transpose(np.array(list(g.edges)))         # action不会改变edge index
+
+
         if ret:
-            return observation
+            return x
 
-    def get_adjacent_matrix(self, g: nx.OrderedDiGraph) -> csr_matrix:
+    def get_adjacent_matrix(self, g) -> csr_matrix:
         """
         Get the compressed adjacency matrix from the graph.
         You can use 'todense()' or 'toarray()' then get the complete matrix.
@@ -1074,7 +1098,7 @@ class HeuristicGraphJsspEnv(HeuristicJsspEnv):
 
         return self.A
 
-    def get_disjunctive_matrix(self, g: nx.OrderedDiGraph) -> csr_matrix:
+    def get_disjunctive_matrix(self, g) -> csr_matrix:
         """
         Get the compressed disjunctive edge matrix from the graph.
         You can use 'todense()' or 'toarray()' then get the complete matrix.
@@ -1113,6 +1137,7 @@ class HeuristicGraphJsspEnv(HeuristicJsspEnv):
 
         return self.D
 
+    
     def step(self, action):
         """
         Process a action contained in action space.
@@ -1133,12 +1158,9 @@ class HeuristicGraphJsspEnv(HeuristicJsspEnv):
         reward = self.transit(action)
         g, done = self.observe()
 
-        feature = self.__get_feature_from_g(g)
-        observation = {
-            'feature': feature,
-            'A': self.get_adjacent_matrix(g),
-            'D': self.get_disjunctive_matrix(g)
-        }
+        x = self.g2s(g, len(g.nodes)*10)
+        #x = np.reshape(x, (-1,10))
+        #edge_index = np.transpose(np.array(list(g.edges)))
 
         info = {
             'cost': self.num_unsafety,
@@ -1147,9 +1169,9 @@ class HeuristicGraphJsspEnv(HeuristicJsspEnv):
             'makespan': self.global_time
         }
 
-        return observation, reward, done, info
+        return x, reward, done, info
 
-    def __get_feature_from_g(self, g: nx.OrderedDiGraph) -> np.ndarray:
+    def __get_feature_from_g(self, g) -> np.ndarray:
         """
         Get the feature from one disjunctive graph.
 
@@ -1223,7 +1245,7 @@ class HeuristicAttentionJsspEnv(HeuristicJsspEnv):
         )
         self.observation_space = AttentionState(self.num_jobs, self.num_steps, self.num_machines)
 
-    def reset(self, random_rate: float = 0., shuffle: bool = True, ret: bool = True) -> np.ndarray:
+    def reset(self, shuffle: bool = True, ret: bool = True) -> np.ndarray:
         """
         Reset the environment.
 
@@ -1236,7 +1258,7 @@ class HeuristicAttentionJsspEnv(HeuristicJsspEnv):
         Returns:
             The initial observation or None.
         """
-        super(HeuristicJsspEnv, self).reset(ret=False, random_rate=random_rate, shuffle=shuffle)
+        super(HeuristicJsspEnv, self).reset(ret=False, shuffle=shuffle)
 
         g, _ = self.observe()
         observation = self.__get_feature_from_g(g)
@@ -1276,7 +1298,7 @@ class HeuristicAttentionJsspEnv(HeuristicJsspEnv):
 
         return state, reward, done, info
 
-    def __get_feature_from_g(self, g: nx.OrderedDiGraph) -> np.ndarray:
+    def __get_feature_from_g(self, g) -> np.ndarray:
         """
         Get the feature from one disjunctive graph.
 
