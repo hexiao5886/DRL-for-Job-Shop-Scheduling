@@ -7,3 +7,12 @@ For remote server:
 git add .
 git commit -m "xxx"
 git push -u origin master
+
+
+To clone and mangage my repo on a new device:
+git config --global user.name "hexiao"
+git config --global user.email "1309028818@qq.com"
+cd ~/.ssh
+ssh-keygen -t rsa -C "1309028818@qq.com"
+打开 id_rsa.pub，复制到github上的SSH Keys
+git clone https://github.com/hexiao5886/DRL-for-Job-Shop-Scheduling.git
