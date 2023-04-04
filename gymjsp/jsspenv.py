@@ -1007,7 +1007,7 @@ class HeuristicGraphJsspEnv(HeuristicJsspEnv):
                  delay: bool = False,
                  verbose: bool = False,
                  reward_type: str = 'idle_time',
-                 schedule_cycle: int = 1):
+                 schedule_cycle: int = 8):
         """
         Args:
             name: The name of JSSP instance.(abz5-9, ft06, ft10, ft20, la01-la40, orb01-orb10, swv01-swv20, yn1-yn4).

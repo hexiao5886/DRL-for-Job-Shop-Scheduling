@@ -24,7 +24,7 @@ def seed_torch(seed):
 
 
 
-def train_dqn(instance, num_episodes = 100, memory_size = 100000, batch_size = 64, target_update = 50, noisy = False, 
+def train_dqn_gcn(instance, num_episodes = 100, memory_size = 100000, batch_size = 64, target_update = 50,
               plotting_interval=10, seed=777, save_plot=None):
     env = HeuristicJsspEnv(instance)
     env.seed(seed)
@@ -33,7 +33,7 @@ def train_dqn(instance, num_episodes = 100, memory_size = 100000, batch_size = 6
     seed_torch(seed)
 
 
-    agent = DQNAgent_GCN(env, memory_size, batch_size, target_update, noisy=noisy)
+    agent = DQNAgent_GCN(env, memory_size, batch_size, target_update)
     agent.train(num_episodes, plotting_interval=plotting_interval, save_plot=save_plot)
 
     trained_dqn = agent._get_dqn()
