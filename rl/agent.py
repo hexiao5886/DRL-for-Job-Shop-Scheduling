@@ -391,6 +391,7 @@ class DQNAgent_GCN:
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
+        print(self.device)
         
         # PER
         # In DQN, We used "ReplayBuffer(obs_dim, memory_size, batch_size)"
