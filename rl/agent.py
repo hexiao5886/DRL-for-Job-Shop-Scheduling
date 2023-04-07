@@ -266,6 +266,7 @@ class DQNAgent:
 
     def load_dqn(self, file):
         self.dqn.load_state_dict(torch.load(file))
+        self.device = next(self.dqn.parameters()).device
 
     def _compute_dqn_loss(self, samples: Dict[str, np.ndarray]) -> torch.Tensor:
         """Return dqn loss."""
