@@ -21,3 +21,6 @@ git clone https://github.com/hexiao5886/DRL-for-Job-Shop-Scheduling
 git remote -v
 git remote set-url origin git@github.com:hexiao5886/DRL-for-Job-Shop-Scheduling.git
 git push
+
+
+从本地创建仓库并上传，参考链接：https://blog.csdn.net/Rao_Limon/article/details/108418233
