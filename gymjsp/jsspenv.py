@@ -595,6 +595,195 @@ class BasicJsspEnv(gym.Env):
         if os.path.exists('tmp.html'):
             os.remove('tmp.html')
 
+# environment of L2D paper
+class L2D_JsspEnv(BasicJsspEnv):
+    def __init__(self,
+                 name: str = None,
+                 num_jobs: int = None,
+                 num_machines: int = None,
+                 embedding_dim: int = 16,
+                 delay: bool = False,
+                 verbose: bool = False,
+                 reward_type: str = 'idle_time'):
+        super(GraphJsspEnv, self).__init__(
+            num_machines=num_machines,
+            num_jobs=num_jobs,
+            detach_done=False,
+            name=name,
+            embedding_dim=embedding_dim,
+            delay=delay,
+            verbose=verbose,
+            reward_type=reward_type,
+        )
+        self.feature_dim = 2
+
+    def get_adjacent_matrix(self, g) -> csr_matrix:
+        """
+        Get the compressed adjacency matrix from the graph.
+        You can use 'todense()' or 'toarray()' then get the complete matrix.
+
+        Args:
+            g: Disjunctive graph.
+
+        Returns:
+            Compressed adjacency matrix.
+
+        Examples:
+            >>> env = GraphJsspEnv('ft06')
+            >>> a = env.get_adjacent_matrix(g)
+            >>> a = a.todense()
+        """
+        if not hasattr(self, 'A'):
+            # shape of data and indices is n*(m-1)*2 + n*m*(n-1), shape of indptr is n*m + 1
+            # but data can queeze to 1
+            nodelist = [i for i in range(nx.number_of_nodes(g))]
+            A = nx.adjacency_matrix(g, nodelist)
+            self.A = A
+        return self.A
+
+    def get_disjunctive_matrix(self, g) -> csr_matrix:
+        """
+        Get the compressed disjunctive edge matrix from the graph.
+        You can use 'todense()' or 'toarray()' then get the complete matrix.
+
+        Args:
+            g: Disjunctive graph.
+
+        Returns:
+            Compressed disjunctive edge matrix.
+
+        Examples:
+            >>> env = GraphJsspEnv('ft06')
+            >>> d = env.get_disjunctive_matrix(g)
+            >>> d = d.todense()
+        """
+        if not hasattr(self, 'D'):
+            # all len of data, row, col is n*(n-1)*m, but data can squeeze to 1
+            # length = self.num_jobs*(self.num_jobs-1)*self.num_machine
+            num_nodes = nx.number_of_nodes(g)
+
+            nodelist = [i for i in range(num_nodes)]
+            data = []
+            row = []
+            col = []
+            for n in nodelist:
+                neighbors = g.neighbors(n)
+                for m in neighbors:
+                    if g.edges[n, m]['type'] == DISJUNCTIVE_TYPE:
+                        data.append(1)
+                        row.append(n)
+                        col.append(m)
+            n, m = self.num_jobs, self.num_machines
+            assert len(row) == n * m * (n - 1)
+            self.D = csr_matrix((data, (row, col)),
+                                shape=(n * m, n * m))
+
+        return self.D
+
+    def get_edge_index(self, g):
+        if not hasattr(self, 'edge_index'):
+            num_nodes = nx.number_of_nodes(g)
+
+            nodelist = [i for i in range(num_nodes)]
+
+            for n in nodelist:
+                neighbors = g.neighbors(n)
+                for m in neighbors:
+                    if g.edges[n, m]['type'] == DISJUNCTIVE_TYPE:
+                        pass
+
+            n, m = self.num_jobs, self.num_machines
+            self.edge_index = []
+
+        return self.edge_index
+
+    def step(self, action):
+        
+        doable_ops = self.get_doable_ops_in_list()
+        self.transit(action)
+        g, done = self.observe()
+        reward = self.cal_reward(action, doable_ops=doable_ops)
+
+        """
+        feature = self.__get_feature_from_g(g)
+        observation = {
+            'feature': feature,
+            'A': self.get_adjacent_matrix(g),
+            'D': self.get_disjunctive_matrix(g)
+        }"""
+        x = self.g2s(g)
+        x = np.reshape(x, (-1,10))
+
+        observation = {
+            'x': x,
+            'edge_index': 0
+        }
+        info = {
+            'cost': self.num_unsafety,
+            'wait': self.num_wait,
+            'total action': self.num_do_action,
+            'makespan': self.global_time
+        }
+        return observation, reward, done, info
+
+    def reset(self, random_rate: float = 0., shuffle: bool = True, ret: bool = True):
+        """
+        Reset the environment.
+
+        Args:
+            random_rate: Each operation has a random_rate probability to randomly increase or decrease the process time.
+            
+            shuffle: True indicates each job has a random_rate probability to shuffle.
+
+            ret: True indicates this function will returns the initial observation.
+        Returns:
+            The initial observation or None.
+        """
+        super(GraphJsspEnv, self).reset(ret=False, random_rate=random_rate, shuffle=shuffle)
+
+        g, _ = self.observe()
+        feature = self.__get_feature_from_g(g)
+        if hasattr(self, 'A'):
+            delattr(self, 'A')
+            delattr(self, 'D')
+        A = self.get_adjacent_matrix(g)
+        D = self.get_disjunctive_matrix(g)
+
+        observation = {
+            'feature': feature,
+            'A': A,
+            'D': D
+        }
+        if ret:
+            return observation
+
+    def __get_feature_from_g(self, g) -> np.ndarray:
+        """
+        Get the feature from one disjunctive graph.
+
+        Args:
+            g: Disjunctive graph.
+        
+        Return:
+            The feature that consists of matrix.
+        """
+        feature = np.zeros((10, self.num_jobs * self.num_steps), dtype=np.float64)
+
+        for n in range(nx.number_of_nodes(g)):
+            feature[0, n] = g.nodes[n]['id'][0] / self.num_jobs  # job id
+            feature[1, n] = g.nodes[n]['id'][1] / self.num_steps  # step id
+            feature[2, n] = g.nodes[n]['type']
+            feature[3, n] = g.nodes[n]['complete_ratio']
+            feature[4, n] = g.nodes[n]['processing_time'] / self._max_pro_time
+            feature[5, n] = g.nodes[n]['remaining_ops'] / self.num_steps
+            feature[6, n] = min(1., g.nodes[n]['waiting_time'] / self._max_pro_time)
+            feature[7, n] = g.nodes[n]['remain_time'] / self._max_pro_time
+            feature[8, n] = g.nodes[n]['doable']
+            feature[9, n] = g.nodes[n]['machine'] / self.num_machines
+        return feature
+
+
+
 
 class GraphJsspEnv(BasicJsspEnv):
     def __init__(self,
@@ -1547,3 +1736,434 @@ class AttentionState(spaces.Box):
     def __eq__(self, other):
         return isinstance(other, AttentionState) and self.num_jobs == other.num_jobs and \
                self.num_machines == other.num_machines and self.num_steps == other.num_steps
+
+
+
+
+
+class GIN_JsspEnv(gym.Env):
+    def __init__(self,
+                 name: str = None,
+                 num_jobs: int = None,
+                 num_machines: int = None):
+        super(GIN_JsspEnv, self).__init__()
+
+        # Load instance
+        if name[0].isdigit():
+            self.name = name
+            l = name.split('_')
+            num_jobs, num_machines, idx = int(l[0]), int(l[1]), int(l[2])
+            i, n, m, processing_time_matrix, machine_matrix = load_random(num_jobs, num_machines)
+            processing_time_matrix, machine_matrix = processing_time_matrix[idx], machine_matrix[idx]
+        else:
+            self.name = name
+            n, m, processing_time_matrix, machine_matrix = load_instance(name)
+        
+        # Initialize
+        self.num_jobs, self.num_machines = n, m
+        self.processing_time_matrix = processing_time_matrix
+        self.machine_matrix = machine_matrix
+
+        # Action space and observation space
+        self.action_space = spaces.Discrete(self.num_jobs)
+        # self.observation_space = 
+
+
+
+    def step(self, action):
+        job_id = action
+
+
+
+
+        return state, reward, done, info
+
+    def reset(self):
+        Times = self.processing_time_matrix
+        n_processes = self.num_machines
+
+        ####################### Create a DAG and add the edges that indicates the Process Constraints ##########################
+        graph = nx.DiGraph()
+        for j in range(self.num_jobs):
+            for i in range(n_processes):
+                if i == 0:
+                    graph.add_edge("s", "{}_{}".format(i, j), weight=0)                                         # s 指向第一个工序
+                    graph.add_edge("{}_{}".format(i, j), "{}_{}".format(i+1, j), weight=Times[j][i])
+                elif i == n_processes-1:
+                    graph.add_edge("{}_{}".format(i, j), "t", weight=Times[j][i])                           # 最后一个工序指向 t
+                else:
+                    graph.add_edge("{}_{}".format(i, j), "{}_{}".format(i+1, j), weight=Times[j][i])        # 同一个Job，前一个工序指向后一个工序
+
+        # Add node features
+        
+
+
+        self.graph = graph
+
+    
+    def render(self):
+        """
+        同步显示，析取图、甘特图随着agent做动作的动画
+        """
+        pass
+
+
+    def seed(self, seed: Any = None) -> Any:
+        """Sets the seed for this environment's random number generator(s)."""
+        np.random.seed(seed)
+        self.action_space.seed(seed)
+        self.observation_space.seed(seed)
+
+    def process_one_second(self):
+        """process all machines one second."""
+        self.global_time += 1
+        self.machine_manager.do_processing(self.global_time)
+
+    def transit(self, action):
+        """
+        Process a action contained in action space. But differ from step, there is no return value.
+
+        Args:
+            action: Contained in the action space.
+        """
+        if self.is_done():
+            return
+
+        self.num_do_action += 1
+        if action is None:
+            # Perform random action
+            machine = np.random.choice(self.machine_manager.get_available_machines())
+            op_id = np.random.choice(machine.doable_ops_id)
+            job_id, step_id = self.job_manager.sur_index_dict[op_id]
+            operation = self.job_manager[job_id][step_id]
+            action = operation
+            machine.transit(self.global_time, action)
+        else:
+            if isinstance(action, np.ndarray):
+                # print(action, action.shape)
+                action = int(action)
+            if self.use_surrogate_index:
+                if action in self.job_manager.sur_index_dict.keys():
+                    if action not in self.get_doable_ops_in_list():
+                        self.process_one_second()
+                        self.num_unsafety += 1
+                        return
+                    job_id, step_id = self.job_manager.sur_index_dict[action]
+                elif action == self.wait_action:
+                    self.process_one_second()
+                    self.num_wait += 1
+                    return
+                else:
+                    raise RuntimeError("Input action is not valid")
+            else:
+                job_id, step_id = action                        # specify an operation
+
+            operation = self.job_manager[job_id][step_id]
+            machine_id = operation.machine_id
+            machine = self.machine_manager[machine_id]
+            action = operation
+            machine.transit(self.global_time, action)           # action actually specifies an operation to be processed
+
+    def is_done(self):
+        """Whether it’s time to reset the environment again. True indicates the episode has terminated."""
+        jobs_done = [job.job_done for _, job in self.job_manager.jobs.items()]
+        if np.prod(jobs_done) == 1:
+            done = True
+        else:
+            done = False
+        return done
+
+    def cal_reward(self, action: int = None, reward_type: str = None, doable_ops: list = None):
+        """
+        Calculate the reward for performing the action.
+
+        Args:
+            action: The selected action.
+            
+            reward_type: Type of reward.
+
+            doable_ops: All doable operations in list.
+        """
+        if self.is_done():
+            return 1
+
+        if reward_type is None:
+            reward_type = self.reward_type
+
+        if reward_type == 'utilization':
+            t_cost = self.machine_manager.cal_total_cost()      # cost = length of queues of all machines.      (prev_done operation would be in the queue)
+            reward = -t_cost
+            reward = (reward / self.num_jobs) * 2 + 1
+
+        elif reward_type == 'idle_time':                        # idle = (assigned job delay) or (no assigned job)
+            reward = -float(len(self.machine_manager.get_idle_machines())) / float(self.num_machines)       
+            
+
+        else:
+            raise KeyError(
+                "Don't know what is {} reward. Please use 'utilization', 'idle_time', etc.".format(reward_type))
+
+        if not doable_ops:
+            doable_ops = self.get_doable_ops_in_list()
+        if action == self.wait_action:
+            if doable_ops:
+                reward -= 0.3
+                reward = max(reward, -1)
+        elif doable_ops and action is not None and action not in doable_ops:
+            reward -= 0.5
+            reward = max(reward, -1)
+
+        return reward
+
+    def flush_trivial_ops(self, gamma=1.0):
+        """
+        Get to the next point where there's a doable operation to do.
+
+        Args:
+            gamma: Discount factor.
+
+        Returns:
+            Returns three values. These are:
+
+            * m_list(list): Machines that have more than one doable operation.
+            
+            * reward(float): Amount of reward achieved by the previous action.
+            
+            * done(boolean): Whether it’s time to reset the environment again. True indicates the episode has terminated.
+        """
+        done = False
+        cum_reward = 0
+        while True:
+            m_list = []
+            do_op_dict = self.get_doable_ops_in_dict()
+            all_machine_work = False if bool(do_op_dict) else True
+
+            if all_machine_work:  # all machines are on processing. keep process!
+                self.process_one_second()
+            else:  # some of machine has possibly trivial action. the others not.
+                # load trivial ops to the machines
+                num_ops_counter = 1
+                for m_id, op_ids in do_op_dict.items():
+                    num_ops = len(op_ids)
+                    if num_ops == 1:
+                        self.transit(op_ids[0])  # load trivial action
+                        _, _ = self.observe()
+                        r = self.cal_reward()
+                        cum_reward = r + gamma * cum_reward
+                    else:
+                        m_list.append(m_id)
+                        num_ops_counter *= num_ops
+
+                # not-all trivial break the loop
+                if num_ops_counter != 1:
+                    break
+
+            # if it is done
+            jobs_done = [job.job_done for _, job in self.job_manager.jobs.items()]
+            done = True if np.prod(jobs_done) == 1 else False
+
+            if done:
+                break
+        return m_list, cum_reward, done
+
+    def get_available_machines(self, shuffle_machine: bool = True):
+        """
+        Get all available machines.
+
+        Args:
+            shuffle_machine: True indicates that the returned list order is scrambled.
+
+        Returns:
+            A list contains all available 'Machines'.
+        """
+        return self.machine_manager.get_available_machines(shuffle_machine)
+
+    def get_doable_ops_in_dict(self, machine_id: int = None, shuffle_machine: bool = True):
+        """
+        Get all doable operations.
+
+        Args:
+            machine_id: None indicates get all doable operations. Else it will return specified operations.
+            
+            shuffle_machine:  True indicates that the returned value order is scrambled.
+
+        Returns:
+            A dict whose key is machine_id(int, start from 1), value is [op1_id, op2_id, ...].
+        """
+        if machine_id is None:
+            doable_dict = {}
+            if self.get_available_machines():
+                for m in self.get_available_machines(shuffle_machine):
+                    _id = m.machine_id
+                    _ops = m.doable_ops_id
+                    doable_dict[_id] = _ops
+            ret = doable_dict
+        else:
+            available_machines = [m.machine_id for m in self.get_available_machines()]
+            if machine_id in available_machines:
+                ret = self.machine_manager[machine_id].doable_ops_id
+            else:
+                raise RuntimeWarning("Access to the not available machine {}. Return is None".format(machine_id))
+        return ret
+
+    def get_doable_ops_in_list(self, machine_id: int = None, shuffle_machine: bool = True):
+        """
+        Get all doable operations.
+
+        Args:
+            machine_id: None indicates get all doable operations. Else it will return specified operations.
+            
+            shuffle_machine: True indicates that the returned value order is scrambled.
+
+        Returns:
+            A list contains all doable operations.
+        """
+        doable_dict = self.get_doable_ops_in_dict(machine_id, shuffle_machine)
+        do_ops = []
+        for _, v in doable_dict.items():
+            do_ops += v
+        return do_ops
+
+    def get_doable_ops(self, machine_id: int = None, return_list: bool = False, shuffle_machine: bool = True):
+        """
+        Get all doable operations.
+
+        Args:
+            machine_id: None indicates get all doable operations. Else it will return specified operations.
+            
+            return_list: True indicates that return list. Else return dict.
+            
+            shuffle_machine: True indicates that the returned value order is scrambled.
+
+        Returns:
+            A dict or list contains all doable operations.
+        """
+        if return_list:
+            ret = self.get_doable_ops_in_list(machine_id, shuffle_machine)
+        else:
+            ret = self.get_doable_ops_in_dict(machine_id, shuffle_machine)
+        return ret
+
+    def observe(self, return_doable: bool = True):
+        """
+        Get observation of the environment.
+
+        Returns:
+            Returns two values. There are:
+
+            * observation(OrderedDiGraph): one graph which describes the disjunctive graph and contained other info.
+            * done(boolean): Whether it’s time to reset the environment again. True indicates the episode has terminated.
+        """
+        done = self.is_done()
+
+        g = self.job_manager.observe(detach_done=self.detach_done)
+
+        if return_doable:
+            if self.use_surrogate_index:
+                do_ops_list = self.get_doable_ops(return_list=True)
+                for n in g.nodes:
+                    if n in do_ops_list:
+                        g.nodes[n]['doable'] = True
+                    else:
+                        g.nodes[n]['doable'] = False
+                    job_id, op_id = self.job_manager.sur_index_dict[n]
+                    m_id = self.job_manager[job_id][op_id].machine_id
+                    g.nodes[n]['machine'] = m_id
+
+        return g, done
+
+    def eval_performance(self, performance: str = 'unsatety ratio'):
+        """
+        Evaluate the performance of this episode.
+
+        Args:
+            performance: the performance you want to evaluate.
+            (unsafety ratio, unsafety number, makespan, utilization)
+
+        Returns:
+            Performance of this episode.
+        """
+        if performance == 'unsafety ratio':
+            ret = self.num_unsafety / self.num_do_action
+        elif performance == 'unsafety number':
+            ret = self.num_unsafety
+        elif performance == 'makespan':
+            ret = self.global_time
+        elif performance == 'utilization':
+            ret = {}
+            for machine in self.machine_manager:
+                ret['Machine {}'.format(machine.machine_id)] = machine.total_work_time / machine.finish_time
+        else:
+            raise KeyError(
+                "Don't know what is {} performance. Please use 'makespan', 'utilization', etc.".format(performance))
+
+        return ret
+
+    def get_doable_action(self):
+        """
+        Get doable action in list.
+        """
+        doable_ops = self.get_doable_ops_in_list()
+        doable_ops.append(self.wait_action)
+        return doable_ops
+
+    def draw_gantt_chart(self, path, benchmark_name, max_x=None):
+        """
+        Draw the Gantt chart after the episode has terminated.
+
+        Args:
+            path: The path that saves the chart. Ends with 'html'.
+            
+            benchmark_name: The name of instance.
+            
+            max_x: X maximum(None indicates makespan + 50 )
+        """
+        if max_x is None:
+            max_x = self.global_time + 50
+        # Draw a gantt chart
+        self.job_manager.draw_gantt_chart(path, benchmark_name, max_x)
+
+    def g2s(self, g, state_len=None):
+        """
+        Get the state from one disjunctive graph.
+
+        Args:
+            g: Disjunctive graph.
+
+        Returns:
+            The state that consists of vector.
+        """
+        
+        if state_len:
+            state = np.empty(state_len, dtype=np.float32)       # for GraphHeuristicEnv
+        else:
+            state = np.empty(self.observation_space.shape, dtype=np.float32)
+        nodelist = get_nodelist(g)
+        for n in nodelist:
+            job_id, step_id = g.nodes[n]['id'][0], g.nodes[n]['id'][1]
+            t = self.prior_processing_time_matrix[job_id][step_id]
+            changed_t = self.processing_time_matrix[job_id][step_id]
+            sum_t = np.sum(self.prior_processing_time_matrix[job_id])
+            state[n * 10 + 0] = g.nodes[n]['id'][0] / self.num_jobs  # job id
+            state[n * 10 + 1] = g.nodes[n]['id'][1] / self.num_steps  # step id
+            state[n * 10 + 2] = g.nodes[n]['type']
+            state[n * 10 + 3] = t / sum_t
+            #state[n * 10 + 3] = g.nodes[n]['complete_ratio']
+            state[n * 10 + 4] =  t / self._max_pro_time
+            #state[n * 10 + 4] = g.nodes[n]['processing_time'] / self._max_pro_time      # self._max_pro_time = np.max(processing_time_matrix)
+            state[n * 10 + 5] = g.nodes[n]['remaining_ops'] / self.num_steps
+            state[n * 10 + 6] = min(1., g.nodes[n]['waiting_time'] / self._max_pro_time)
+            #state[n * 10 + 7] = g.nodes[n]['remain_time'] / self._max_pro_time
+            state[n * 10 + 7] = (g.nodes[n]['remain_time'] - changed_t + t) / self._max_pro_time
+            state[n * 10 + 8] = g.nodes[n]['doable']
+            state[n * 10 + 9] = g.nodes[n]['machine'] / self.num_machines
+        return state
+
+    def render(self, mode='human'):
+        """You should render after all operations finished."""
+        self.draw_gantt_chart('tmp.html', self.name)
+
+    def close(self):
+        """'Close' will delete the file generated by 'render'."""
+        if os.path.exists('tmp.html'):
+            os.remove('tmp.html')
