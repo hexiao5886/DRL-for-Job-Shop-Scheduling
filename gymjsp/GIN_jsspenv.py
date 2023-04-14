@@ -31,6 +31,7 @@ class GIN_JsspEnv(gym.Env):
         
         # Initialize
         self.num_jobs, self.num_machines = n, m
+        self.num_tasks = n * m
         self.processing_time_matrix = processing_time_matrix
         self.machine_matrix = machine_matrix
         self.pos_base = np.clip(np.random.rand(self.num_jobs), 0.5, 0.8)               # position base for render the graph plot
@@ -42,8 +43,6 @@ class GIN_JsspEnv(gym.Env):
 
 
     def step(self, action):
-        lb = self.g.nodes['t']['lb']
-
         # check if action is available
         job_id = action
         if self.job_done[job_id]:
@@ -61,6 +60,7 @@ class GIN_JsspEnv(gym.Env):
         print(f"Node {node_id} scheduled")
 
         op['scheduled'] = 1
+        self.scheduled[job_id][op_id] = 1
 
         # determine start time of current op, by finding the earliest feasible time period to allocate it on the required machine.
         # add/remove edges on self.g
@@ -68,7 +68,6 @@ class GIN_JsspEnv(gym.Env):
         # update start time of other ops, only when edges had been removed
         ops_on_machine = self.assigned_jobs[machine_id]
         est = self.compute_est(node_id=node_id)
-        #op['start'] = est
         if not ops_on_machine:
             ops_on_machine.append(node_id)
             self.update_start_time(node_id)
@@ -100,18 +99,28 @@ class GIN_JsspEnv(gym.Env):
                 self.update_start_time(node_id)
 
         print(f"For job {job_id}, ops on machine: {ops_on_machine}")
+        
+        # Calculate self.lb
+        for j in range(self.num_jobs):
+            for i in range(self.num_machines):
+                if self.scheduled[j][i]:                            # scheduled, lb = start + duration
+                    this_node_id = "{}_{}".format(i, j)
+                    this_node = self.g.nodes[this_node_id]
+                    self.lb[j][i] = this_node['start'] + this_node['duration']
+                else:                                               # not scheduled: lb = lb of prev op + duration
+                    if i == 0:
+                        self.lb[j][i] = self.processing_time_matrix[j][i]
+                    else:
+                        self.lb[j][i] = self.lb[j][i-1] + self.processing_time_matrix[j][i]
 
-        """
-        prev_lb = op['lb']
-        op['lb'] = op['start'] + op['duration']
-        if prev_lb < op['lb']:              # update lb of successor nodes, Hint: lb could only become bigger, never smaller
-            self.update_succ_lb(job_id, op_id)"""
-        
-        feature = None
-        lb_new = self.g.nodes['t']['lb']
-        reward = lb - lb_new                    # lower bound always grow bigger, and become closer to the actual value
+                
+        cur_max_lb = np.max(self.lb[:,-1])
+        reward = self.max_lb - cur_max_lb
+        self.max_lb = cur_max_lb
         done = self.job_done.all()
-        
+
+        #print("last column: ", self.lb[:,-1])
+        #print("cur_max_lb: ", cur_max_lb)
 
         return self.g, reward, done, self.available_actions
 
@@ -124,11 +133,12 @@ class GIN_JsspEnv(gym.Env):
         self.op_to_assign = np.zeros(self.num_jobs, dtype=np.int)
         self.job_done = self.op_to_assign == self.num_jobs
         self.available_actions = np.where(~self.job_done)[0]
+        self.scheduled = np.zeros((self.num_jobs, self.num_machines))
 
+        self.max_lb = 47             # an initial value, constant
 
         Times = self.processing_time_matrix
         n_processes = self.num_machines
-
         ####################### Create a DAG and add the edges that indicates the Process Constraints ##########################
         graph = nx.DiGraph()
 
@@ -148,26 +158,19 @@ class GIN_JsspEnv(gym.Env):
         end_node['job'], end_node['op'], end_node['duration'] = None, None, 0
         start_node['start'] = 0
         start_node['scheduled'] = 1
-        start_node['lb'] = 0
 
         for j in range(self.num_jobs):
             for i in range(n_processes):
                 node = graph.nodes["{}_{}".format(i, j)]
                 node['job'], node['op'], node['duration'] = j, i, Times[j][i]
                 node['scheduled'] = 0
-                #node['start'] = None
-                
-                if i == 0:
-                    node['lb'] = node['duration']
-                else:
-                    prev_node = graph.nodes["{}_{}".format(i-1, j)]
-                    node['lb'] = prev_node['lb'] + node['duration']
 
         end_node['scheduled'] = 0
         #end_node['start'] = None
-        last_ops_of_all_jobs = [graph.nodes["{}_{}".format(n_processes-1, j)] for j in range(self.num_jobs)]
-        end_node['lb'] = max([node['lb'] for node in last_ops_of_all_jobs])
+        #last_ops_of_all_jobs = [graph.nodes["{}_{}".format(n_processes-1, j)] for j in range(self.num_jobs)]
+        #end_node['lb'] = max([node['lb'] for node in last_ops_of_all_jobs])
 
+        self.lb = np.cumsum(Times, axis=1)
 
         self.g = graph
 
@@ -196,31 +199,6 @@ class GIN_JsspEnv(gym.Env):
         options = {"node_size": 300, "labels": labels}
         nx.draw_networkx(self.g, pos=positions, node_color=colors, with_labels=True, **options)
         plt.show()
-
-    def update_succ_lb(self, job_id, op_id):
-        """Update the successor nodes of given node, including the 't' node.
-
-        Parameters
-        ----------
-        job_id : int
-            job id of the given node
-        op_id : int
-            operation id of the given node
-        """
-        if op_id != self.num_machines -1:      # should not be the last operation of the job
-            prev_node_id = "{}_{}".format(op_id, job_id)
-            prev_node = self.g.nodes[prev_node_id]
-            for i in range(op_id + 1, self.num_machines):
-                node_id = "{}_{}".format(i, job_id)
-                node = self.g.nodes[node_id]
-                node['lb'] = prev_node['lb'] + node['duration']
-                prev_node = node
-            
-            last_node = prev_node           # after for loop, prev_node points to the last operation of the job
-            end_node = self.g.nodes['t']
-            if last_node['lb'] > end_node['lb']:
-                end_node['lb'] = last_node['lb']
-
 
 
     def update_start_time(self, current_node_id):
@@ -310,12 +288,15 @@ if __name__ == '__main__':
 
     g, legal_actions = env.reset()
     done = False
+
+
     while not done:
         a = np.random.choice(legal_actions)
-        print(f"Agent choose action {a}")
+        #print(f"Agent choose action {a}")
         g, r, done, legal_actions = env.step(a)
-        env.render()
         #print(f"reward={r}")
+        #env.render()
+        
 
     
 
