@@ -26,7 +26,7 @@ class GINConv(torch.nn.Module):
 
 class GIN(torch.nn.Module):
     
-    def __init__(self, input_dim, hidden_dim, output_dim, n_layers):
+    def __init__(self, input_dim, hidden_dim, n_layers, output_dim=None):       # hidden states directly feed in the actor/critic
         super().__init__()
         
         self.in_proj = torch.nn.Linear(input_dim, hidden_dim)
@@ -41,7 +41,8 @@ class GIN(torch.nn.Module):
         # [batch x nodes x hiddem_dim*(1+n_layers)], then aggregated
         # along nodes dimension, without keeping that dimension:
         # [batch x hiddem_dim*(1+n_layers)].
-        self.out_proj = torch.nn.Linear(hidden_dim*(1+n_layers), output_dim)
+
+        # self.out_proj = torch.nn.Linear(hidden_dim*(1+n_layers), output_dim)
 
     def forward(self, A, X):
         X = self.in_proj(X)
@@ -52,8 +53,30 @@ class GIN(torch.nn.Module):
             X = layer(A, X)
             hidden_states.append(X)
 
-        X = torch.cat(hidden_states, dim=2).sum(dim=1)
+        # X = torch.cat(hidden_states, dim=2).sum(dim=1)        # if use features of all layers to pool graph feature
+        X = X.mean(dim=1)                                        # just use features of the last layer
 
-        X = self.out_proj(X)
 
-        return X
+        # X : graph pooling feature
+        # hidden_states : features of all layers
+
+        return X, hidden_states[-1]
+    
+
+
+
+
+
+if __name__ == '__main__':
+    from GIN_jsspenv import GIN_JsspEnv
+    import numpy as np
+
+    env  = GIN_JsspEnv("ft06")
+    env.seed(0)
+
+    adj, feature, legal_actions = env.reset()
+    done = False
+
+    while not done:
+        a = np.random.choice(legal_actions)
+        adj, feature, reward, done, legal_actions = env.step(a)

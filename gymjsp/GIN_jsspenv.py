@@ -112,17 +112,26 @@ class GIN_JsspEnv(gym.Env):
                         self.lb[j][i] = self.processing_time_matrix[j][i]
                     else:
                         self.lb[j][i] = self.lb[j][i-1] + self.processing_time_matrix[j][i]
-
                 
+        view = nx.subgraph_view(self.g, filter_node=lambda x: x not in ['s','t'])
+        adj = nx.adjacency_matrix(view).todense()
+
+        scheduled_vec = self.scheduled.reshape(-1,1)
+        lb_vec = self.lb.reshape((-1,1))
+        feature = np.concatenate((scheduled_vec, lb_vec), axis=1)
+
         cur_max_lb = np.max(self.lb[:,-1])
         reward = self.max_lb - cur_max_lb
         self.max_lb = cur_max_lb
+
         done = self.job_done.all()
+        
+        print("adj shape: ",adj.shape)
+        print("feature shape: ", feature.shape)
 
-        #print("last column: ", self.lb[:,-1])
-        #print("cur_max_lb: ", cur_max_lb)
+        state = adj, feature, self.available_actions
 
-        return self.g, reward, done, self.available_actions
+        return state, reward, done, None
 
 
 
@@ -133,7 +142,7 @@ class GIN_JsspEnv(gym.Env):
         self.op_to_assign = np.zeros(self.num_jobs, dtype=np.int)
         self.job_done = self.op_to_assign == self.num_jobs
         self.available_actions = np.where(~self.job_done)[0]
-        self.scheduled = np.zeros((self.num_jobs, self.num_machines))
+        
 
         self.max_lb = 47             # an initial value, constant
 
@@ -161,20 +170,29 @@ class GIN_JsspEnv(gym.Env):
 
         for j in range(self.num_jobs):
             for i in range(n_processes):
-                node = graph.nodes["{}_{}".format(i, j)]
+                node_id = "{}_{}".format(i, j)
+                
+                node = graph.nodes[node_id]
                 node['job'], node['op'], node['duration'] = j, i, Times[j][i]
                 node['scheduled'] = 0
 
         end_node['scheduled'] = 0
-        #end_node['start'] = None
-        #last_ops_of_all_jobs = [graph.nodes["{}_{}".format(n_processes-1, j)] for j in range(self.num_jobs)]
-        #end_node['lb'] = max([node['lb'] for node in last_ops_of_all_jobs])
 
         self.lb = np.cumsum(Times, axis=1)
+        self.scheduled = np.zeros((self.num_jobs, self.num_machines))
 
         self.g = graph
+        view = nx.subgraph_view(self.g, filter_node=lambda x: x not in ['s','t'])       # print(view.nodes)      # the order is correct
+        adj = nx.adjacency_matrix(view).todense()
 
-        return self.g, self.available_actions
+        scheduled_vec = self.scheduled.reshape(-1,1)
+        lb_vec = self.lb.reshape((-1,1))
+        feature = np.concatenate((scheduled_vec, lb_vec), axis=1)
+
+        # print(feature.shape)        # (36, 2)
+        state = adj, feature, self.available_actions
+        
+        return state
 
 
     def render(self):
@@ -286,16 +304,14 @@ if __name__ == '__main__':
     env  = GIN_JsspEnv("ft06")
     env.seed(0)
 
-    g, legal_actions = env.reset()
+    adj, feature, legal_actions = env.reset()
     done = False
-
 
     while not done:
         a = np.random.choice(legal_actions)
-        #print(f"Agent choose action {a}")
-        g, r, done, legal_actions = env.step(a)
-        #print(f"reward={r}")
-        #env.render()
+        state, reward, done, _ = env.step(a)
+        adj, feature, legal_actions = state
+
         
 
     
