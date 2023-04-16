@@ -29,6 +29,7 @@ def moving_average(a, window_size):
 
 def train_on_policy_agent(env, agent, num_episodes):
     return_list = []
+    makespan_list = []
     for i in range(10):
         with tqdm(total=int(num_episodes/10), desc='Iteration %d' % i) as pbar:
             for i_episode in range(int(num_episodes/10)):
@@ -38,7 +39,7 @@ def train_on_policy_agent(env, agent, num_episodes):
                 done = False
                 while not done:
                     action = agent.take_action(state)
-                    next_state, reward, done, _ = env.step(action)
+                    next_state, reward, done, info = env.step(action)
                     transition_dict['states'].append(state)
                     transition_dict['actions'].append(action)
                     transition_dict['next_states'].append(next_state)
@@ -46,12 +47,14 @@ def train_on_policy_agent(env, agent, num_episodes):
                     transition_dict['dones'].append(done)
                     state = next_state
                     episode_return += reward
+                makespan_list.append(info["makespan"])
                 return_list.append(episode_return)
                 agent.update(transition_dict)
                 if (i_episode+1) % 10 == 0:
                     pbar.set_postfix({'episode': '%d' % (num_episodes/10 * i + i_episode+1), 'return': '%.3f' % np.mean(return_list[-10:])})
                 pbar.update(1)
-    return return_list
+    agent.save()
+    return return_list, makespan_list
 
 def train_off_policy_agent(env, agent, num_episodes, replay_buffer, minimal_size, batch_size):
     return_list = []

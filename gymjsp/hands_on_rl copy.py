@@ -16,21 +16,56 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 
 
 
-
-class PPO:
-    ''' PPO算法,采用截断方式 '''
-    def __init__(self, actor_lr, critic_lr,
-                 lmbda, epochs, eps, gamma, device):
+class ActorCritic(nn.Module):
+    def __init__(self):
+        super().__init__()
         h_dim = 64
         self.feature_extract = GIN(input_dim=2, 
                                    hidden_dim=h_dim, 
                                    n_layers=2).to(device)                                   # input graph nodes' raw features, output 64 dim hidden features
         self.actor_net = mlp([h_dim*2, 32, 32, 1], activation=nn.ReLU).to(device)   # input extracted nodes' features and the selected node's feature
         self.critic = mlp([h_dim, 32, 32, 1], activation=nn.ReLU).to(device)               # input extracted nodes' features
-        self.actor_optimizer = torch.optim.Adam(self.actor_net.parameters(),
-                                                lr=actor_lr)
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),
-                                                 lr=critic_lr)
+
+
+    def forward(self, states):
+        batched_probs, batched_pooled_h = [], []
+
+        for state in states:
+            adj, feature, mask, candidate_operation_indexes = state
+            adj, feature, mask = torch.tensor(adj, dtype=torch.float).to(self.device), \
+                torch.tensor(feature, dtype=torch.float).to(self.device), torch.tensor(mask, dtype=torch.float).to(self.device)
+            adj, feature, mask = adj.unsqueeze(0), feature.unsqueeze(0), mask.unsqueeze(0)
+            pooled_h, h_nodes = self.feature_extract(adj, feature)
+            # print(pooled_h.size())                                    # [1, 64]
+            # print(h_nodes.size())                                     # [1, 36, 64]
+            # print(candidate_operation_indexes)                         # [0, 6, 12, 18, 24, 30]
+            h_candiates = h_nodes[:,candidate_operation_indexes,:]      
+            # print(h_candiates.size())                                   # # [1, 6, 64]
+            pooled_h_expanded = pooled_h.expand_as(h_candiates)
+            # print(pooled_h_expanded.size())                             # [1, 6, 64]
+            concateFea = torch.cat((pooled_h_expanded, h_candiates), dim=-1)
+            # print(concateFea.size())                                    # [1, 6, 128]
+            candidate_scores = self.actor_net(concateFea).squeeze(-1)
+            # print(candidate_scores.size())                              # [1, 6]
+            # perform mask
+            candidate_scores[mask==1] = float('-inf')
+            probs = F.softmax(candidate_scores, dim=1)
+            batched_probs.append(probs)
+            batched_pooled_h.append(pooled_h)
+
+        batched_probs = torch.cat(batched_probs, dim=0)
+        batched_pooled_h = torch.cat(batched_pooled_h, dim=0)       # pooled_h is [1,64] and batched_pooled_h is [batch, 64]
+
+        v = self.critic(batched_pooled_h)
+
+        return batched_probs, v
+
+
+class PPO:
+    ''' PPO算法,采用截断方式 '''
+    def __init__(self, lr, lmbda, epochs, eps, gamma, device):
+        self.policy = ActorCritic()
+        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr)
         self.gamma = gamma
         self.lmbda = lmbda
         self.epochs = epochs  # 一条序列的数据用来训练轮数
@@ -88,23 +123,29 @@ class PPO:
         rewards = torch.tensor(transition_dict['rewards'], dtype=torch.float).view(-1, 1).to(self.device)
         dones = torch.tensor(transition_dict['dones'], dtype=torch.float).view(-1, 1).to(self.device)
         
+        probs, v = self.policy(states)
+        probs_, v_ = self.policy(next_states)
+
         # Critic only input the whole graph feature
-        td_target = rewards + self.gamma * self.critic(self.performe_GIN_extract(next_states)) * (1 - dones)
-        td_delta = td_target - self.critic(self.performe_GIN_extract(states))
+        td_target = rewards + self.gamma * v_ * (1 - dones)
+        td_delta = td_target - v
         # print(self.performe_GIN_extract(states).size())                       # [36, 64]
 
 
         advantage = rl_utils.compute_advantage(self.gamma, self.lmbda, td_delta.cpu()).to(self.device)
-        old_log_probs = torch.log(self.actor(states).gather(1, actions)).detach()
+        old_log_probs = torch.log(probs.gather(1, actions)).detach()
 
         for _ in range(self.epochs):
-            log_probs = torch.log(self.actor(states).gather(1, actions))
+            log_probs = torch.log(probs.gather(1, actions))
             ratio = torch.exp(log_probs - old_log_probs)
             surr1 = ratio * advantage
             surr2 = torch.clamp(ratio, 1 - self.eps, 1 + self.eps) * advantage  # 截断
             actor_loss = torch.mean(-torch.min(surr1, surr2))  # PPO损失函数
             critic_loss = torch.mean(
-                F.mse_loss(self.critic(self.performe_GIN_extract(states)), td_target.detach()))
+                F.mse_loss(v, td_target.detach()))
+            
+            loss = actor_loss + critic_loss
+
             self.actor_optimizer.zero_grad()
             self.critic_optimizer.zero_grad()
             actor_loss.backward()
@@ -112,20 +153,7 @@ class PPO:
             self.actor_optimizer.step()
             self.critic_optimizer.step()
 
-    def performe_GIN_extract(self, states):
-        """
-        Used by critic, input states got from enviroment, output graph feature of current state
-        """
-        batched_pooled_h = []
-        for state in states:
-            adj, feature, mask, candidate_operation_indexes = state
-            adj, feature = torch.tensor(adj, dtype=torch.float).to(self.device), torch.tensor(feature, dtype=torch.float).to(self.device)
-            adj, feature = adj.unsqueeze(0), feature.unsqueeze(0)
-            pooled_h, h_nodes = self.feature_extract(adj, feature)
-            batched_pooled_h.append(pooled_h)
-        batched_pooled_h = torch.cat(batched_pooled_h, dim=0)
-        # pooled_h is [1,64] and batched_pooled_h is [batch, 64]
-        return batched_pooled_h
+
         
 
 

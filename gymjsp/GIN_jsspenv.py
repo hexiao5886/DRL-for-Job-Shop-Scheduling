@@ -37,7 +37,7 @@ class GIN_JsspEnv(gym.Env):
         self.pos_base = np.clip(np.random.rand(self.num_jobs), 0.5, 0.8)               # position base for render the graph plot
 
         # Action space and observation space
-        self.action_space = spaces.Discrete(self.num_jobs)
+        # self.action_space = spaces.Discrete(self.num_jobs)
         # self.observation_space = 
 
 
@@ -57,7 +57,7 @@ class GIN_JsspEnv(gym.Env):
 
         node_id = "{}_{}".format(op_id, job_id)
         op = self.g.nodes[node_id]
-        print(f"Node {node_id} scheduled")
+        # print(f"Node {node_id} scheduled")
 
         op['scheduled'] = 1
         self.scheduled[job_id][op_id] = 1
@@ -98,7 +98,7 @@ class GIN_JsspEnv(gym.Env):
                 ops_on_machine.insert(0, node_id)
                 self.update_start_time(node_id)
 
-        print(f"For job {job_id}, ops on machine: {ops_on_machine}")
+        # print(f"For job {job_id}, ops on machine: {ops_on_machine}")
         
         # Calculate self.lb
         for j in range(self.num_jobs):
@@ -126,12 +126,23 @@ class GIN_JsspEnv(gym.Env):
 
         done = self.job_done.all()
         
-        print("adj shape: ",adj.shape)
-        print("feature shape: ", feature.shape)
+        # print("adj shape: ",adj.shape)
+        # print("feature shape: ", feature.shape)
+        candidate_operation_indexes = []
+        for j in range(self.num_jobs):
+            idx = self.op_to_assign[j] + j * self.num_machines
+            idx = min(self.num_jobs*self.num_machines-1, idx)       
+            # for the last operation of jobs, the idx would exceed the scope, 
+            # but it only matters when it's the last job, because there is mask.
+            candidate_operation_indexes.append(idx)
 
-        state = adj, feature, self.available_actions
+        mask = self.job_done
+        state = np.array([adj, feature, mask, candidate_operation_indexes])
+        info = {}
+        if done:
+            info["makespan"] = self.max_lb
 
-        return state, reward, done, None
+        return state, reward, done, info
 
 
 
@@ -142,6 +153,7 @@ class GIN_JsspEnv(gym.Env):
         self.op_to_assign = np.zeros(self.num_jobs, dtype=np.int)
         self.job_done = self.op_to_assign == self.num_jobs
         self.available_actions = np.where(~self.job_done)[0]
+        
         
 
         self.max_lb = 47             # an initial value, constant
@@ -190,7 +202,12 @@ class GIN_JsspEnv(gym.Env):
         feature = np.concatenate((scheduled_vec, lb_vec), axis=1)
 
         # print(feature.shape)        # (36, 2)
-        state = adj, feature, self.available_actions
+        candidate_operation_indexes = []
+        for j in range(self.num_jobs):
+            idx = self.op_to_assign[j] + j * self.num_machines
+            candidate_operation_indexes.append(idx)
+        mask = self.job_done
+        state = np.array([adj, feature, mask, candidate_operation_indexes])
         
         return state
 
@@ -259,8 +276,7 @@ class GIN_JsspEnv(gym.Env):
     def seed(self, seed):
         """Sets the seed for this environment's random number generator(s)."""
         np.random.seed(seed)
-        self.action_space.seed(seed)
-        #self.observation_space.seed(seed)
+        # self.action_space.seed(seed)
 
 
     def get_pos_from_id(self, node_id):
@@ -310,7 +326,7 @@ if __name__ == '__main__':
     while not done:
         a = np.random.choice(legal_actions)
         state, reward, done, _ = env.step(a)
-        adj, feature, legal_actions = state
+        adj, feature, legal_actions, candidate_operation_indexes = state
 
         
 

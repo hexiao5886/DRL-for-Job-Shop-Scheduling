@@ -54,15 +54,14 @@ class GIN(torch.nn.Module):
             hidden_states.append(X)
 
         # X = torch.cat(hidden_states, dim=2).sum(dim=1)        # if use features of all layers to pool graph feature
-        X = X.mean(dim=1)                                        # just use features of the last layer
+        X = X.mean(dim=1)                                        # Apply mean pooling on  features of the last layer
 
 
         # X : graph pooling feature
-        # hidden_states : features of all layers
+        # hidden_states : list of features of all nodes, each for a layer
 
         return X, hidden_states[-1]
     
-
 
 
 
