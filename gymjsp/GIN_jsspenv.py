@@ -36,21 +36,12 @@ class GIN_JsspEnv(gym.Env):
         self.machine_matrix = machine_matrix
         self.pos_base = np.clip(np.random.rand(self.num_jobs), 0.5, 0.8)               # position base for render the graph plot
 
-        # Action space and observation space
-        # self.action_space = spaces.Discrete(self.num_jobs)
-        # self.observation_space = 
-
 
 
     def step(self, action):
-        # check if action is available
         job_id = action
-        if self.job_done[job_id]:
-            raise Exception("This job already done, Action not available!")
-
-        
+        assert not self.job_done[job_id]            # make sure action is available
         op_id = self.op_to_assign[job_id]
-
         machine_id = self.machine_matrix[job_id][op_id]
         self.op_to_assign[job_id] += 1
         self.job_done = self.op_to_assign == self.num_machines
@@ -139,12 +130,12 @@ class GIN_JsspEnv(gym.Env):
             candidate_operation_indexes.append(idx)
 
         mask = self.job_done
-        state = np.array([adj, feature, mask, candidate_operation_indexes])
+        next_state = np.array([adj, feature, mask, candidate_operation_indexes])
         info = {}
         if done:
             info["makespan"] = self.max_lb
 
-        return state, reward, done, info
+        return next_state, reward, done, info
 
 
 
@@ -318,10 +309,8 @@ class GIN_JsspEnv(gym.Env):
 
 
 if __name__ == '__main__':
-
     env  = GIN_JsspEnv("ft06")
     env.seed(0)
-
     adj, feature, mask, candidate_operation_indexes = env.reset()
     done = False
     

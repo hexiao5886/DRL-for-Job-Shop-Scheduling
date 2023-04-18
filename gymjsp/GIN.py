@@ -5,6 +5,7 @@ class GINConv(torch.nn.Module):
         super().__init__()
         
         self.linear = torch.nn.Linear(hidden_dim, hidden_dim)
+        # self.batch_norm = torch.nn.BatchNorm1d(hidden_dim)
 
     def forward(self, A, X):
         """
@@ -17,7 +18,10 @@ class GINConv(torch.nn.Module):
         -------
         X' [batch x nodes x features]: updated node features matrix
         """
+        
         X = self.linear(X + A @ X)
+        # print(X.size())
+        # X = self.batch_norm(X)
         X = torch.nn.functional.relu(X)
         
         return X
@@ -45,9 +49,7 @@ class GIN(torch.nn.Module):
         # self.out_proj = torch.nn.Linear(hidden_dim*(1+n_layers), output_dim)
 
     def forward(self, A, X):
-        x1 = X
         X = self.in_proj(X)
-        x2 = X
 
         hidden_states = [X]
         
@@ -56,18 +58,18 @@ class GIN(torch.nn.Module):
             hidden_states.append(X)
 
         # X = torch.cat(hidden_states, dim=2).sum(dim=1)        # if use features of all layers to pool graph feature
-        X = X.mean(dim=1)                                        # Apply mean pooling on  features of the last layer
+        avg_pooled = X.mean(dim=1)                                        # Apply mean pooling on  features of the last layer
 
 
         # X : graph pooling feature
         # hidden_states : list of features of all nodes, each for a layer
-        if torch.isnan(X).any():
-            print(x1)
-            print(x2)  # nan, next: print in_proj param
-            print(A)
+        # if torch.isnan(X).any():
+        #     print(x1)
+        #     print(x2)  # nan, next: print in_proj param
+        #     print(A)
         # print("hidden states")
         # print(hidden_states)
-        return X, hidden_states[-1]
+        return avg_pooled, X
     
 
 

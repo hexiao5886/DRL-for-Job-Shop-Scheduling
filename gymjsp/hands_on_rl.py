@@ -138,6 +138,10 @@ class PPO:
         return action
 
     def update(self, transition_dict):
+        # Set neural network to be training mode
+        self.feature_extract.train()
+        self.actor.train()
+        self.critic.train()
         # extract (s, a, r, s_, done) from transition_dict
         states = transition_dict['states']
         next_states = transition_dict['next_states']
@@ -170,6 +174,12 @@ class PPO:
             self.actor_optimizer.step()
             self.critic_optimizer.step()
 
+    def eval(self):
+        self.feature_extract.eval()
+        self.actor.eval()
+        self.critic.eval()
+        
+
     def save(self):
         time_stamp = time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())
         torch.save(self.actor.state_dict(), time_stamp + "_actor.pth")
@@ -179,12 +189,14 @@ class PPO:
         self.actor.load_state_dict(torch.load(actor_file))
         self.critic.load_state_dict(torch.load(critic_file))
 
+
+
 if __name__ == '__main__':
     import warnings
     warnings.filterwarnings('ignore')
     actor_lr = 1e-3
     critic_lr = 1e-2
-    num_episodes = 3000
+    num_episodes = 10
     gamma = 0.98
     lmbda = 0.95
     epochs = 10
@@ -193,7 +205,7 @@ if __name__ == '__main__':
 
     from GIN_jsspenv import GIN_JsspEnv
     from GIN import GIN
-    env_name = 'ft06'
+    env_name = 'swv06'
     env = GIN_JsspEnv(env_name)
     env.seed(0)
     torch.manual_seed(0)
@@ -211,6 +223,6 @@ if __name__ == '__main__':
     plt.title('training returns, PPO on {}'.format(env_name))
     plt.legend()
     import time
-    
-    plt.savefig(time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())+'.png')
+    file_name = 'single_instance_single_timemat_' + env_name + '_' + time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())+'.png'
+    plt.savefig(file_name)
     plt.show()
