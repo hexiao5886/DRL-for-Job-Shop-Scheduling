@@ -1,5 +1,6 @@
 import os
 import gym
+import torch
 import time
 import collections
 import numpy as np
@@ -276,7 +277,7 @@ class GIN_JsspEnv(gym.Env):
     def seed(self, seed):
         """Sets the seed for this environment's random number generator(s)."""
         np.random.seed(seed)
-        # self.action_space.seed(seed)
+        torch.manual_seed(0)
 
 
     def get_pos_from_id(self, node_id):

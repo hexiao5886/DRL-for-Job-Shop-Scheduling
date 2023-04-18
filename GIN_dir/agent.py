@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import rl_utils
 from GIN import GIN
+import os
 
 
 def mlp(sizes, activation, output_activation=nn.Identity):
@@ -180,14 +181,21 @@ class PPO:
         self.critic.eval()
         
 
-    def save(self):
+    def save(self, policy_dir):
+        if not os.path.exists(policy_dir):
+            os.makedirs(policy_dir)
         time_stamp = time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())
-        torch.save(self.actor.state_dict(), time_stamp + "_actor.pth")
-        torch.save(self.critic.state_dict(), time_stamp + "_critic.pth")
+        torch.save(self.actor.state_dict(), os.path.join(policy_dir, time_stamp + "_actor.pth"))
+        torch.save(self.critic.state_dict(), os.path.join(policy_dir, time_stamp + "_critic.pth"))
 
-    def load(self, actor_file, critic_file):
-        self.actor.load_state_dict(torch.load(actor_file))
-        self.critic.load_state_dict(torch.load(critic_file))
+    def load(self, policy_dir):
+        for file in os.listdir(policy_dir):
+            if 'actor' in file:
+                self.actor.load_state_dict(torch.load(os.path.join(policy_dir, file)))
+            elif 'critic' in file:
+                self.critic.load_state_dict(torch.load(os.path.join(policy_dir, file)))
+            else:
+                print("policy dir not correct.")
 
 
 
