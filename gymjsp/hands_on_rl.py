@@ -29,6 +29,7 @@ class Actor(nn.Module):
 
         for state in states:
             adj, feature, mask, candidate_operation_indexes = state
+            
             adj, feature, mask = torch.tensor(adj, dtype=torch.float).to(self.device), \
                 torch.tensor(feature, dtype=torch.float).to(self.device), torch.tensor(mask, dtype=torch.float).to(self.device)
             adj, feature, mask = adj.unsqueeze(0), feature.unsqueeze(0), mask.unsqueeze(0)
@@ -36,19 +37,28 @@ class Actor(nn.Module):
             # print(pooled_h.size())                                    # [1, 64]
             # print(h_nodes.size())                                     # [1, 36, 64]
             # print(candidate_operation_indexes)                         # [0, 6, 12, 18, 24, 30]
-            h_candiates = h_nodes[:,candidate_operation_indexes,:]      
+            h_candidates = h_nodes[:,candidate_operation_indexes,:]      
             # print(h_candiates.size())                                   # # [1, 6, 64]
-            pooled_h_expanded = pooled_h.expand_as(h_candiates)
+            pooled_h_expanded = pooled_h.expand_as(h_candidates)
             # print(pooled_h_expanded.size())                             # [1, 6, 64]
-            concateFea = torch.cat((pooled_h_expanded, h_candiates), dim=-1)
+            concateFea = torch.cat((pooled_h_expanded, h_candidates), dim=-1)
             # print(concateFea.size())                                    # [1, 6, 128]
 
             candidate_scores = self.mlp(concateFea).squeeze(-1)
+
             # print(candidate_scores.size())                              # [1, 6]
             # perform mask
             candidate_scores[mask==1] = float('-inf')
             probs = F.softmax(candidate_scores, dim=1)
             batched_probs.append(probs)
+            
+            
+        # print(pooled_h)
+        # print(h_nodes)
+        # print(h_candidates)
+        # print(candidate_scores)
+        # print(concateFea)
+        # print(batched_probs)
 
         batched_probs = torch.cat(batched_probs, dim=0)
 
@@ -117,9 +127,11 @@ class PPO:
         
     def take_action(self, state, determinstic=False):
         probs = self.actor([state])
+        if torch.isnan(probs).any():
+            print(probs)
+            print(state)
         action_dist = torch.distributions.Categorical(probs)
         if determinstic:
-            # print(probs)
             action = probs.argmax()
         else:
             action = action_dist.sample().item()
@@ -168,6 +180,8 @@ class PPO:
         self.critic.load_state_dict(torch.load(critic_file))
 
 if __name__ == '__main__':
+    import warnings
+    warnings.filterwarnings('ignore')
     actor_lr = 1e-3
     critic_lr = 1e-2
     num_episodes = 3000
@@ -183,7 +197,7 @@ if __name__ == '__main__':
     env = GIN_JsspEnv(env_name)
     env.seed(0)
     torch.manual_seed(0)
-    agent = PPO(actor_lr, critic_lr, lmbda, epochs, eps, gamma, device)
+    agent = PPO(device, actor_lr, critic_lr, lmbda, epochs, eps, gamma)
 
     return_list, makespan_list = rl_utils.train_on_policy_agent(env, agent, num_episodes)
 

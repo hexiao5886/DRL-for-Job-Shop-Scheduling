@@ -115,7 +115,8 @@ class GIN_JsspEnv(gym.Env):
                         self.lb[j][i] = self.lb[j][i-1] + self.processing_time_matrix[j][i]
                 
         view = nx.subgraph_view(self.g, filter_node=lambda x: x not in ['s','t'])
-        adj = nx.adjacency_matrix(view).todense()
+        adj = nx.adjacency_matrix(view, weight=None).todense()
+
 
         scheduled_vec = self.scheduled.reshape(-1,1)
         lb_vec = self.lb.reshape((-1,1))
@@ -196,7 +197,7 @@ class GIN_JsspEnv(gym.Env):
 
         self.g = graph
         view = nx.subgraph_view(self.g, filter_node=lambda x: x not in ['s','t'])       # print(view.nodes)      # the order is correct
-        adj = nx.adjacency_matrix(view).todense()
+        adj = nx.adjacency_matrix(view, weight=None).todense()
 
         scheduled_vec = self.scheduled.reshape(-1,1)
         lb_vec = self.lb.reshape((-1,1))
@@ -321,13 +322,16 @@ if __name__ == '__main__':
     env  = GIN_JsspEnv("ft06")
     env.seed(0)
 
-    adj, feature, legal_actions = env.reset()
+    adj, feature, mask, candidate_operation_indexes = env.reset()
     done = False
-
+    
     while not done:
+        print(adj)
+        legal_actions = np.where(~mask)[0]
         a = np.random.choice(legal_actions)
         state, reward, done, _ = env.step(a)
-        adj, feature, legal_actions, candidate_operation_indexes = state
+        adj, feature, mask, candidate_operation_indexes = state
+        
 
         
 
