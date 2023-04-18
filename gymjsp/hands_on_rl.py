@@ -196,7 +196,7 @@ if __name__ == '__main__':
     warnings.filterwarnings('ignore')
     actor_lr = 1e-3
     critic_lr = 1e-2
-    num_episodes = 10
+    num_episodes = 300
     gamma = 0.98
     lmbda = 0.95
     epochs = 10
