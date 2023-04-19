@@ -38,6 +38,7 @@ class GIN_JsspEnv(gym.Env):
         else:
             # Initialize
             self.num_jobs, self.num_machines = processing_time_matrix.shape
+            self.name = str(processing_time_matrix.shape)
             self.num_tasks = self.num_jobs * self.num_machines
             self.processing_time_matrix = processing_time_matrix
             self.machine_matrix = machine_matrix
@@ -119,6 +120,8 @@ class GIN_JsspEnv(gym.Env):
 
         scheduled_vec = self.scheduled.reshape(-1,1)
         lb_vec = self.lb.reshape((-1,1))
+        # normalize !
+        lb_vec = lb_vec / np.max(lb_vec)
         feature = np.concatenate((scheduled_vec, lb_vec), axis=1)
 
         cur_max_lb = np.max(self.lb[:,-1])
@@ -200,6 +203,8 @@ class GIN_JsspEnv(gym.Env):
 
         scheduled_vec = self.scheduled.reshape(-1,1)
         lb_vec = self.lb.reshape((-1,1))
+        # normalize !
+        lb_vec = lb_vec / np.max(lb_vec)
         feature = np.concatenate((scheduled_vec, lb_vec), axis=1)
 
         # print(feature.shape)        # (36, 2)
