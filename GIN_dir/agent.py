@@ -160,7 +160,8 @@ class PPO:
         advantage = rl_utils.compute_advantage(self.gamma, self.lmbda, td_delta.cpu()).to(self.device)
         old_log_probs = torch.log(self.actor(states).gather(1, actions)).detach()
 
-        for _ in range(self.epochs):
+        actor_losses, critic_losses = [], []
+        for _ in range(self.epochs):                            # update self.epochs steps
             log_probs = torch.log(self.actor(states).gather(1, actions))
             ratio = torch.exp(log_probs - old_log_probs)
             surr1 = ratio * advantage
@@ -174,6 +175,11 @@ class PPO:
             critic_loss.backward()
             self.actor_optimizer.step()
             self.critic_optimizer.step()
+
+            actor_losses.append(actor_loss.item())
+            critic_losses.append(critic_loss.item())
+
+        return np.mean(actor_losses), np.mean(critic_losses)
 
     def eval(self):
         self.feature_extract.eval()

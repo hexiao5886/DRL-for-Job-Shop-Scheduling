@@ -4,35 +4,46 @@ import torch
 import collections
 import random
 from collections import defaultdict
+from collections import OrderedDict
 from GIN_jsspenv import GIN_JsspEnv
+from logger import Logger
 
-class ReplayBuffer:
-    def __init__(self, capacity):
-        self.buffer = collections.deque(maxlen=capacity) 
 
-    def add(self, state, action, reward, next_state, done): 
-        self.buffer.append((state, action, reward, next_state, done)) 
+def train_single_size_on(size, num_episodes_per_env=10, dir="logdir/"):
+    env_name = f"train_single_size_on_{size}"
+    exp_name = f"num_episodes_per_env={num_episodes_per_env}"
+    logdir = dir + exp_name + '_' + env_name + '_' + time.strftime("%d-%m-%Y_%H-%M-%S")
+    logger = Logger(log_dir=logdir)
+    logs = OrderedDict()
+    
+    num_jobs, num_machines = size
+    generated_instances_file = f"DataGen/generatedData{num_jobs}_{num_machines}_Seed200.npy"
+    policy_dir = f"saved_policies/train_single_size_on_{num_jobs}_{num_machines}_num_episodes_per_env={num_episodes_per_env}"
+    agent = PPO(device, actor_lr, critic_lr, lmbda, epochs, eps, gamma)
+    generated_instances = np.load(generated_instances_file)
 
-    def sample(self, batch_size): 
-        transitions = random.sample(self.buffer, batch_size)
-        state, action, reward, next_state, done = zip(*transitions)
-        return np.array(state), action, reward, np.array(next_state), done 
+    for i in range(len(generated_instances)):
+        instance = generated_instances[i]
+        time_mat, machine_mat = instance
+        env = GIN_JsspEnv(processing_time_matrix=time_mat, machine_matrix=machine_mat)
+        env.seed(0)
+        rl_utils.train_on_policy_agent(env=env, agent=agent, num_episodes=num_episodes_per_env, logger=logger, logs=logs)
 
-    def size(self): 
-        return len(self.buffer)
+    agent.save(policy_dir)
 
-def moving_average(a, window_size):
-    cumulative_sum = np.cumsum(np.insert(a, 0, 0)) 
-    middle = (cumulative_sum[window_size:] - cumulative_sum[:-window_size]) / window_size
-    r = np.arange(1, window_size-1, 2)
-    begin = np.cumsum(a[:window_size-1])[::2] / r
-    end = (np.cumsum(a[:-window_size:-1])[::2] / r)[::-1]
-    return np.concatenate((begin, middle, end))
 
-def train_on_policy_agent(env, agent, num_episodes):
-    return_list = []
-    makespan_list = []
-    for _ in range(num_episodes):
+
+def train_agent(curriculums, agent, logger, logs):
+    step = 0
+    for size, num_episodes in curriculums.items():
+        
+
+
+
+
+def train_on_policy_agent(env, agent, num_episodes, logger, logs):
+    
+    for itr in range(num_episodes):
         episode_return = 0
         transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
         state = env.reset()
@@ -48,11 +59,20 @@ def train_on_policy_agent(env, agent, num_episodes):
             transition_dict['dones'].append(done)
             state = next_state
             episode_return += reward
-        makespan_list.append(info["makespan"])
-        return_list.append(episode_return)
-        agent.update(transition_dict)
+        actor_loss, critic_loss = agent.update(transition_dict)
 
-    return return_list, makespan_list
+        logs["makespan"] = info["makespan"]
+        logs["return"] = episode_return
+        logs["actor_loss"] = actor_loss
+        logs["critic_loss"] = critic_loss
+
+        # perform the logging
+        for key, value in logs.items():
+            #print('{} : {}'.format(key, value))
+            logger.log_scalar(value, key, itr)
+        
+        logger.flush()
+
 
 
 def train_on_policy_agent_parallel_envs(instances, agent, num_iterations, num_episodes_per_iter, return_lists, makespan_lists):
@@ -65,7 +85,6 @@ def train_on_policy_agent_parallel_envs(instances, agent, num_iterations, num_ep
     makespan_lists: list of lists of makespans
     """
     for i in range(num_iterations):
-        print(f"{i} iters done.")
         n = len(instances[0])
         idx = i % n
         idx_instances = [instance[idx] for instance in instances]
@@ -91,32 +110,9 @@ def train_on_policy_agent_parallel_envs(instances, agent, num_iterations, num_ep
                     episode_return += reward
                 makespan_lists[env.name].append(info["makespan"])
                 return_lists[env.name].append(episode_return)
-            agent.update(transition_dict)               # update agent after collecting data from envs
+            actor_loss, critic_loss = agent.update(transition_dict)               # update agent after collecting data from envs
 
 
-def train_off_policy_agent(env, agent, num_episodes, replay_buffer, minimal_size, batch_size):
-    return_list = []
-    for i in range(10):
-        with tqdm(total=int(num_episodes/10), desc='Iteration %d' % i) as pbar:
-            for i_episode in range(int(num_episodes/10)):
-                episode_return = 0
-                state = env.reset()
-                done = False
-                while not done:
-                    action = agent.take_action(state)
-                    next_state, reward, done, _ = env.step(action)
-                    replay_buffer.add(state, action, reward, next_state, done)
-                    state = next_state
-                    episode_return += reward
-                    if replay_buffer.size() > minimal_size:
-                        b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
-                        transition_dict = {'states': b_s, 'actions': b_a, 'next_states': b_ns, 'rewards': b_r, 'dones': b_d}
-                        agent.update(transition_dict)
-                return_list.append(episode_return)
-                if (i_episode+1) % 10 == 0:
-                    pbar.set_postfix({'episode': '%d' % (num_episodes/10 * i + i_episode+1), 'return': '%.3f' % np.mean(return_list[-10:])})
-                pbar.update(1)
-    return return_list
 
 
 def compute_advantage(gamma, lmbda, td_delta):
