@@ -7,7 +7,7 @@ import networkx as nx
 from ortools.sat.python import cp_model
 from matplotlib import pyplot as plt
 from gymjsp.jsspenv import HeuristicJsspEnv
-from tianshou.data import Batch
+# from tianshou.data import Batch
 import warnings
 warnings.filterwarnings("ignore")
 from gymjsp.orliberty import load_random, load_instance

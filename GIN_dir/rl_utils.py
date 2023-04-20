@@ -8,34 +8,6 @@ from collections import OrderedDict
 from GIN_jsspenv import GIN_JsspEnv
 from logger import Logger
 
-
-def train_single_size_on(size, num_episodes_per_env=10, dir="logdir/"):
-    env_name = f"train_single_size_on_{size}"
-    exp_name = f"num_episodes_per_env={num_episodes_per_env}"
-    logdir = dir + exp_name + '_' + env_name + '_' + time.strftime("%d-%m-%Y_%H-%M-%S")
-    logger = Logger(log_dir=logdir)
-    logs = OrderedDict()
-    
-    num_jobs, num_machines = size
-    generated_instances_file = f"DataGen/generatedData{num_jobs}_{num_machines}_Seed200.npy"
-    policy_dir = f"saved_policies/train_single_size_on_{num_jobs}_{num_machines}_num_episodes_per_env={num_episodes_per_env}"
-    agent = PPO(device, actor_lr, critic_lr, lmbda, epochs, eps, gamma)
-    generated_instances = np.load(generated_instances_file)
-
-    for i in range(len(generated_instances)):
-        instance = generated_instances[i]
-        time_mat, machine_mat = instance
-        env = GIN_JsspEnv(processing_time_matrix=time_mat, machine_matrix=machine_mat)
-        env.seed(0)
-        rl_utils.train_on_policy_agent(env=env, agent=agent, num_episodes=num_episodes_per_env, logger=logger, logs=logs)
-
-    agent.save(policy_dir)
-
-
-
-def train_agent(curriculums, agent, logger, logs):
-    step = 0
-    for size, num_episodes in curriculums.items():
         
 
 
