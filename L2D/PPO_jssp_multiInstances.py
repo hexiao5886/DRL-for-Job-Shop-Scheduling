@@ -166,9 +166,15 @@ def main():
 
     dataLoaded = np.load('./DataGen/generatedData' + str(configs.n_j) + '_' + str(configs.n_m) + '_Seed' + str(configs.np_seed_validation) + '.npy')
     vali_data = []
-    for i in range(dataLoaded.shape[0]):
-        vali_data.append((dataLoaded[i][0], dataLoaded[i][1]))
-
+    # for i in range(dataLoaded.shape[0]):
+    #     vali_data.append((dataLoaded[i][0], dataLoaded[i][1]))
+        
+    for instance in all_instances:
+        # adj, fea, candidate, mask = env.reset(data_generator(n_j=configs.n_j, n_m=configs.n_m, low=configs.low, high=configs.high))
+        n,m, times, machines = load_instance(instance)
+        data = times,machines
+        vali_data.append(data)
+        
     torch.manual_seed(configs.torch_seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(configs.torch_seed)
@@ -282,12 +288,12 @@ def main():
         # validate and save use mean performance
         t4 = time.time()
         # if (i_update + 1) % 100 == 0:
-        if (i_update + 1) % 200 == 0:
+        if (i_update + 1) % 50 == 0:
             vali_result = - validate(vali_data, ppo.policy).mean()
             validation_log.append(vali_result)
             if vali_result < record:
                 torch.save(ppo.policy.state_dict(), './{}.pth'.format(
-                    str(configs.n_j) + '_' + str(configs.n_m) + '_' + str(configs.low) + '_' + str(configs.high)+'_'+str(configs.max_updates)))
+                    str(configs.n_j) + '_' + str(configs.n_m) + '_' + str(configs.low) + '_' + str(configs.high)+'_'+str(configs.max_updates)+'_on_swv'))
                 record = vali_result
             print('The validation quality is:', vali_result)
             file_writing_obj1 = open(

@@ -9,7 +9,7 @@ import torch.nn as nn
 import numpy as np
 from Params import configs
 from validation import validate
-
+from orliberty import load_instance
 device = torch.device(configs.device)
 
 
@@ -159,15 +159,22 @@ def main():
 
     from JSSP_Env import SJSSP
     envs = [SJSSP(n_j=configs.n_j, n_m=configs.n_m) for _ in range(configs.num_envs)]
-    
+    all_instances = [f"swv{i}" for i in range(11,21)]
+
     from uniform_instance_gen import uni_instance_gen
-    data_generator = uni_instance_gen
+    # data_generator = uni_instance_gen                   # train on generated data
 
     dataLoaded = np.load('./DataGen/generatedData' + str(configs.n_j) + '_' + str(configs.n_m) + '_Seed' + str(configs.np_seed_validation) + '.npy')
     vali_data = []
-    for i in range(dataLoaded.shape[0]):
-        vali_data.append((dataLoaded[i][0], dataLoaded[i][1]))
-
+    # for i in range(dataLoaded.shape[0]):
+    #     vali_data.append((dataLoaded[i][0], dataLoaded[i][1]))
+        
+    for instance in all_instances:
+        # adj, fea, candidate, mask = env.reset(data_generator(n_j=configs.n_j, n_m=configs.n_m, low=configs.low, high=configs.high))
+        n,m, times, machines = load_instance(instance)
+        data = times,machines
+        vali_data.append(data)
+        
     torch.manual_seed(configs.torch_seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(configs.torch_seed)
@@ -209,7 +216,11 @@ def main():
         mask_envs = []
         
         for i, env in enumerate(envs):
-            adj, fea, candidate, mask = env.reset(data_generator(n_j=configs.n_j, n_m=configs.n_m, low=configs.low, high=configs.high))
+            # adj, fea, candidate, mask = env.reset(data_generator(n_j=configs.n_j, n_m=configs.n_m, low=configs.low, high=configs.high))
+            n,m, times, machines = load_instance(all_instances[i])
+            data = times,machines
+            adj, fea, candidate, mask = env.reset(data)
+            
             adj_envs.append(adj)
             fea_envs.append(fea)
             candidate_envs.append(candidate)
@@ -277,12 +288,12 @@ def main():
         # validate and save use mean performance
         t4 = time.time()
         # if (i_update + 1) % 100 == 0:
-        if (i_update + 1) % 200 == 0:
+        if (i_update + 1) % 50 == 0:
             vali_result = - validate(vali_data, ppo.policy).mean()
             validation_log.append(vali_result)
             if vali_result < record:
                 torch.save(ppo.policy.state_dict(), './{}.pth'.format(
-                    str(configs.n_j) + '_' + str(configs.n_m) + '_' + str(configs.low) + '_' + str(configs.high)+'_'+str(configs.max_updates)))
+                    str(configs.n_j) + '_' + str(configs.n_m) + '_' + str(configs.low) + '_' + str(configs.high)+'_'+str(configs.max_updates)+'_on_swv'))
                 record = vali_result
             print('The validation quality is:', vali_result)
             file_writing_obj1 = open(
