@@ -9,7 +9,7 @@ import torch.nn as nn
 import numpy as np
 from Params import configs
 from validation import validate
-
+from orliberty import load_instance
 device = torch.device(configs.device)
 
 
@@ -159,9 +159,10 @@ def main():
 
     from JSSP_Env import SJSSP
     envs = [SJSSP(n_j=configs.n_j, n_m=configs.n_m) for _ in range(configs.num_envs)]
-    
+    all_instances = [f"swv{i}" for i in range(11,21)]
+
     from uniform_instance_gen import uni_instance_gen
-    data_generator = uni_instance_gen
+    # data_generator = uni_instance_gen                   # train on generated data
 
     dataLoaded = np.load('./DataGen/generatedData' + str(configs.n_j) + '_' + str(configs.n_m) + '_Seed' + str(configs.np_seed_validation) + '.npy')
     vali_data = []
@@ -209,7 +210,11 @@ def main():
         mask_envs = []
         
         for i, env in enumerate(envs):
-            adj, fea, candidate, mask = env.reset(data_generator(n_j=configs.n_j, n_m=configs.n_m, low=configs.low, high=configs.high))
+            # adj, fea, candidate, mask = env.reset(data_generator(n_j=configs.n_j, n_m=configs.n_m, low=configs.low, high=configs.high))
+            n,m, times, machines = load_instance(all_instances[i])
+            data = times,machines
+            adj, fea, candidate, mask = env.reset(data)
+            
             adj_envs.append(adj)
             fea_envs.append(fea)
             candidate_envs.append(candidate)

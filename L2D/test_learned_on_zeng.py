@@ -36,7 +36,8 @@ def test(instance = "ft06",N_JOBS_N = 20, N_MACHINES_N = 20):
             hidden_dim_actor=configs.hidden_dim_actor,
             num_mlp_layers_critic=configs.num_mlp_layers_critic,
             hidden_dim_critic=configs.hidden_dim_critic)
-    path = 'SavedNetwork/{}.pth'.format(str(N_JOBS_N) + '_' + str(N_MACHINES_N) + '_' + str(LOW) + '_' + str(HIGH))
+    path = 'SavedNetwork/{}.pth'.format(str(N_JOBS_N) + '_' + str(N_MACHINES_N) + '_' + str(LOW) + '_' + str(HIGH)+ '_' + str(10000))
+    
     ppo.policy.load_state_dict(torch.load(path))
     g_pool_step = g_pool_cal(graph_pool_type=configs.graph_pool_type,
                             batch_size=torch.Size([1, env.number_of_tasks, env.number_of_tasks]),
@@ -83,13 +84,22 @@ def test(instance = "ft06",N_JOBS_N = 20, N_MACHINES_N = 20):
     # print(np.array(result, dtype=np.single).mean())
     # np.save('drlResult_' + benchmark + '_' + str(N_JOBS_N) + 'x' + str(N_MACHINES_N) + '_' + str(N_JOBS_P) + 'x' + str(N_MACHINES_P), np.array(result, dtype=np.single))
 
+import pandas as pd
+df = pd.DataFrame()
+
+# trained_size = (50, 10)
+# all_instances = ["ft06", "la01", "la06", "la11", "la21", "la31", "la36", "orb01", "yn1", "swv01", "swv06"]
+
+all_instances = [f"swv{i}" for i in range(11,21)]
+
+for trained_size in [(20,20), (30,20), (50,10)]:
+    ret = {}
+    for instance in all_instances:
+        result = test(instance=instance, N_JOBS_N=trained_size[0], N_MACHINES_N=trained_size[1])
+        print(instance, result)
+        ret[instance] = result
+
+    df[str(trained_size)] = list(ret.values())
 
 
-trained_size = (20, 20)
-all_instances = ["ft06", "la01", "la06", "la11", "la21", "la31", "la36", "orb01", "yn1", "swv01", "swv06"]
-ret = {}
-for instance in all_instances:
-    result = test(instance=instance, N_JOBS_N=trained_size[0], N_MACHINES_N=trained_size[1])
-    print(instance, result)
-    ret[instance] = result
-
+df.to_csv("ret.csv")

@@ -27,7 +27,7 @@ parser.add_argument('--hidden_dim_actor', type=int, default=32, help='hidden dim
 parser.add_argument('--num_mlp_layers_critic', type=int, default=2, help='No. of layers in critic MLP')
 parser.add_argument('--hidden_dim_critic', type=int, default=32, help='hidden dim of MLP in critic')
 # args for PPO
-parser.add_argument('--num_envs', type=int, default=4, help='No. of envs for training')
+parser.add_argument('--num_envs', type=int, default=10, help='No. of envs for training')
 parser.add_argument('--max_updates', type=int, default=10000, help='No. of episodes of each env for training')
 parser.add_argument('--lr', type=float, default=2e-5, help='lr')
 parser.add_argument('--decayflag', type=bool, default=False, help='lr decayflag')
