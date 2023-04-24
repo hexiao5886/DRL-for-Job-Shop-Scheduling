@@ -1,0 +1,2 @@
+device:  cuda
+problem_sizes:  [6]
