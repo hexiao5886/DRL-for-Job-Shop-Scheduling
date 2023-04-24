@@ -1,2 +1,5 @@
 device:  cuda
 problem_sizes:  [6]
+device:  cuda
+problem_sizes:  [6]
+Seed: 0, Invalid-action-masking: 1
