@@ -1135,6 +1135,11 @@ class HeuristicJsspEnv(BasicJsspEnv):
             'makespan': self.global_time
         }
 
+        if done:
+            last_k = (self.num_jobs * self.num_machines) % self.schedule_cycle
+            if last_k != 0:
+                reward = reward * last_k / self.schedule_cycle
+
         return observation, reward, done, info
 
     def get_process_time(self, ops_id: int):

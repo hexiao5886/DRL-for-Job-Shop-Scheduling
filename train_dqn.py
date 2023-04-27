@@ -25,8 +25,8 @@ def seed_torch(seed):
 
 
 def train_dqn(instance, num_episodes = 100, memory_size = 100000, batch_size = 64, target_update = 50, noisy = False, 
-              plotting_interval=10, seed=777, save_plot=None):
-    env = HeuristicJsspEnv(instance)
+              plotting_interval=10, seed=777, save_plot=None, schedule_cycle=8):
+    env = HeuristicJsspEnv(instance, schedule_cycle=schedule_cycle)
     env.seed(seed)
     np.random.seed(seed)
     random.seed(seed)
