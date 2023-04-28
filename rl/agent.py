@@ -9,7 +9,7 @@ from IPython.display import clear_output
 from torch.nn.utils import clip_grad_norm_
 
 from .buffer import ReplayBuffer, PrioritizedReplayBuffer
-from .network import Network, Dueling_Network, Dueling_NoisyNetwork, GCN
+from .network import Network, Dueling_Network, Dueling_NoisyNetwork
 
 
 class DQNAgent:
