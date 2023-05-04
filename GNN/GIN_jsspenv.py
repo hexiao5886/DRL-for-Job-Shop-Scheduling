@@ -114,7 +114,8 @@ class GIN_JsspEnv(gym.Env):
                     else:
                         self.lb[j][i] = self.lb[j][i-1] + self.processing_time_matrix[j][i]
                 
-        view = nx.subgraph_view(self.g, filter_node=lambda x: x not in ['s','t'])
+        view = nx.subgraph_view(self.g, filter_node=lambda x: x not in ['s','t'])       # not including start node, end node, completed node
+        
         adj = nx.adjacency_matrix(view, weight=None).todense()
 
 

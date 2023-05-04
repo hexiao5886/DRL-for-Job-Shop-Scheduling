@@ -131,10 +131,10 @@ class PPO:
         if torch.isnan(probs).any():
             print(probs)
             print(state)
-        action_dist = torch.distributions.Categorical(probs)
         if determinstic:
             action = probs.argmax()
         else:
+            action_dist = torch.distributions.Categorical(probs)
             action = action_dist.sample().item()
         return action
 

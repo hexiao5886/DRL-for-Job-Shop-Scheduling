@@ -19,12 +19,15 @@ plotting_inteval = 10
 instances = ["ft06", "la01", "la06", "la11", "la21", "la31", "la36", "orb01", "swv01", "swv06", "swv11", "yn1"]
 # num_episodes of swv11 is actually 100, changed to 1000 for implementation simplicity
 
+
 def load_agent(instance):
-    policy_file = f"policies/dqn_mlp/{instance}_num_episodes={num_episodes}_memory_size={memory_size}_target_update={target_update}_noisy={noisy}.pth"
+    policy_file = f"policies/dqn_mlp/{instance}_num_episodes={num_episodes}_memory_size={memory_size}_target_update={target_update}_noisy={noisy}_cycle=8.pth"
     env = HeuristicJsspEnv(instance)
     agent = DQNAgent(env, memory_size, batch_size, target_update, noisy=noisy)
     agent.load_dqn(policy_file)
     return agent
+
+
 
 def get_makespan_of_random_policy(env, num_simulations=10):
     makespans = []
