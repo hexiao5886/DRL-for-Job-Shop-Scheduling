@@ -1,11 +1,8 @@
-import gym
 import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-import matplotlib.pyplot as plt
-import rl_utils
 from GIN import GIN
 import os
 
@@ -16,6 +13,16 @@ def mlp(sizes, activation, output_activation=nn.Identity):
         act = activation if j < len(sizes)-2 else output_activation
         layers += [nn.Linear(sizes[j], sizes[j+1]), act()]
     return nn.Sequential(*layers)
+
+def compute_advantage(gamma, lmbda, td_delta):
+    td_delta = td_delta.detach().numpy()
+    advantage_list = []
+    advantage = 0.0
+    for delta in td_delta[::-1]:
+        advantage = gamma * lmbda * advantage + delta
+        advantage_list.append(advantage)
+    advantage_list.reverse()
+    return torch.tensor(advantage_list, dtype=torch.float)
 
 class Actor(nn.Module):
     def __init__(self, feature_extract, h_dim, device):
@@ -95,9 +102,8 @@ class Critic(nn.Module):
 
 class PPO:
     ''' PPO算法,采用截断方式 '''
-    def __init__(self, device, actor_lr=1e-3, critic_lr=1e-2,
-                 lmbda=0.95, epochs=10, eps=0.2, gamma=0.98):
-        h_dim = 64
+    def __init__(self, device='cuda', actor_lr=1e-3, critic_lr=1e-2,
+                 lmbda=0.95, epochs=10, eps=0.2, gamma=0.98, h_dim=64):
         self.feature_extract = GIN(input_dim=2, 
                                    hidden_dim=h_dim, 
                                    n_layers=2).to(device)           # input graph nodes' raw features, output 64 dim hidden features
@@ -157,7 +163,7 @@ class PPO:
         # print(self.performe_GIN_extract(states).size())                       # [36, 64]
 
 
-        advantage = rl_utils.compute_advantage(self.gamma, self.lmbda, td_delta.cpu()).to(self.device)
+        advantage = compute_advantage(self.gamma, self.lmbda, td_delta.cpu()).to(self.device)
         old_log_probs = torch.log(self.actor(states).gather(1, actions)).detach()
 
         actor_losses, critic_losses = [], []

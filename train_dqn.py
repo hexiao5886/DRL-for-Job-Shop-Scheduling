@@ -40,3 +40,4 @@ def train_dqn(instance, num_episodes = 100, memory_size = 100000, batch_size = 6
     makespan = agent.test()
 
     return trained_dqn, makespan
+
